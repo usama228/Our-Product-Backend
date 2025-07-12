@@ -1,5 +1,6 @@
 const express = require('express');
 const sequelize = require('./config/db');
+import { swaggerUi, swaggerSpec } from './swagger.js';
 const path = require('path'); 
 const helmet = require('helmet');
 const cors = require('cors');
@@ -17,6 +18,7 @@ app.use(cors({
 }));
 
 app.use('/public', express.static(path.join(__dirname, 'public')));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use(express.json());
 app.get('/', (req, res) => {
   res.send('Welcome to the API!');
