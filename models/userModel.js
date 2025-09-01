@@ -44,6 +44,31 @@ const User = sequelize.define('User', {
     allowNull: false,
     defaultValue: 'internee'
   },
+  phone: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notEmpty: true,
+      len: [10, 15]
+    }
+  },
+  idCardNumber: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+    validate: {
+      notEmpty: true,
+      len: [5, 20]
+    }
+  },
+  idCardFrontPic: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  idCardBackPic: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
   profilePicture: {
     type: DataTypes.STRING,
     allowNull: true

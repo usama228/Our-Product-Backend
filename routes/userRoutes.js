@@ -2,7 +2,9 @@ const express = require('express');
 const { 
   getAllUsers, 
   getTeamLeads, 
-  getInternees, 
+  getInternees,
+  updateUserStatus,
+  updateUserRole,
   getDashboardStats 
 } = require('../controllers/userController');
 const { authenticateToken, requireAdmin, requireTeamLead } = require('../middleware/auth');
@@ -17,5 +19,9 @@ router.get('/internees', authenticateToken, requireTeamLead, getInternees);
 router.get('/internees/:teamLeadId', authenticateToken, requireTeamLead, getInternees);
 
 router.get('/', authenticateToken, requireAdmin, getAllUsers);
+
+// Admin only user management routes
+router.put('/:userId/status', authenticateToken, requireAdmin, updateUserStatus);
+router.put('/:userId/role', authenticateToken, requireAdmin, updateUserRole);
 
 module.exports = router;

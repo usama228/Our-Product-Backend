@@ -13,6 +13,10 @@ const seedData = async () => {
       lastName: "User",
       email: "admin@company.com",
       password: "admin123",
+      phone: "03001234567",
+      idCardNumber: "12345-6789012-3",
+      idCardFrontPic: "/uploads/documents/admin-id-front.jpg",
+      idCardBackPic: "/uploads/documents/admin-id-back.jpg",
       role: "admin",
     });
 
@@ -22,6 +26,10 @@ const seedData = async () => {
       lastName: "Altaf",
       email: "rahimeen.altaf@company.com",
       password: "teamlead123",
+      phone: "03001234568",
+      idCardNumber: "12345-6789012-4",
+      idCardFrontPic: "/uploads/documents/rahimeen-id-front.jpg",
+      idCardBackPic: "/uploads/documents/rahimeen-id-back.jpg",
       role: "team_lead",
     });
 
@@ -30,6 +38,10 @@ const seedData = async () => {
       lastName: "Ali",
       email: "alina.ali@company.com",
       password: "teamlead123",
+      phone: "03001234569",
+      idCardNumber: "12345-6789012-5",
+      idCardFrontPic: "/uploads/documents/alina-id-front.jpg",
+      idCardBackPic: "/uploads/documents/alina-id-back.jpg",
       role: "team_lead",
     });
 
@@ -39,6 +51,10 @@ const seedData = async () => {
       lastName: "Ali",
       email: "ahmed.ali@company.com",
       password: "employee123",
+      phone: "03001234570",
+      idCardNumber: "12345-6789012-6",
+      idCardFrontPic: "/uploads/documents/ahmed-id-front.jpg",
+      idCardBackPic: "/uploads/documents/ahmed-id-back.jpg",
       role: "employee",
     });
 
@@ -48,6 +64,10 @@ const seedData = async () => {
       lastName: "Maryam",
       email: "areesha.maryam@company.com",
       password: "internee123",
+      phone: "03001234571",
+      idCardNumber: "12345-6789012-7",
+      idCardFrontPic: "/uploads/documents/areesha-id-front.jpg",
+      idCardBackPic: "/uploads/documents/areesha-id-back.jpg",
       role: "internee",
       teamLeadId: teamLead1.id,
     });
@@ -57,6 +77,10 @@ const seedData = async () => {
       lastName: "Khan",
       email: "shazia.khan@company.com",
       password: "internee123",
+      phone: "03001234572",
+      idCardNumber: "12345-6789012-8",
+      idCardFrontPic: "/uploads/documents/shazia-id-front.jpg",
+      idCardBackPic: "/uploads/documents/shazia-id-back.jpg",
       role: "internee",
       teamLeadId: teamLead1.id,
     });
@@ -66,6 +90,10 @@ const seedData = async () => {
       lastName: "Ali",
       email: "anila.ali@company.com",
       password: "internee123",
+      phone: "03001234573",
+      idCardNumber: "12345-6789012-9",
+      idCardFrontPic: "/uploads/documents/anila-id-front.jpg",
+      idCardBackPic: "/uploads/documents/anila-id-back.jpg",
       role: "internee",
       teamLeadId: teamLead2.id,
     });

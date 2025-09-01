@@ -6,10 +6,27 @@ const generateToken = (userId) => {
   });
 };
 
-// Register new user
+// Register new user (Admin only)
 const register = async (req, res) => {
   try {
-    const { firstName, lastName, email, password, role, teamLeadId } = req.body;
+    const { firstName, lastName, email, password, phone, idCardNumber, role, teamLeadId } = req.body;
+
+    // Validate required fields
+    if (!firstName || !lastName || !email || !password || !phone || !idCardNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'All required fields must be provided'
+      });
+    }
+
+    // Validate phone number format (basic validation)
+    const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+    if (!phoneRegex.test(phone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid phone number format'
+      });
+    }
 
     // Check if user already exists
     const existingUser = await User.findOne({ where: { email } });
@@ -17,6 +34,24 @@ const register = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'User with this email already exists'
+      });
+    }
+
+    // Check if phone number already exists
+    const existingPhone = await User.findOne({ where: { phone } });
+    if (existingPhone) {
+      return res.status(400).json({
+        success: false,
+        message: 'User with this phone number already exists'
+      });
+    }
+
+    // Check if ID card number already exists
+    const existingIdCard = await User.findOne({ where: { idCardNumber } });
+    if (existingIdCard) {
+      return res.status(400).json({
+        success: false,
+        message: 'User with this ID card number already exists'
       });
     }
 
@@ -33,10 +68,29 @@ const register = async (req, res) => {
       }
     }
 
-    // Handle profile picture upload
+    // Handle file uploads
     let profilePicture = null;
-    if (req.file) {
-      profilePicture = `/uploads/profiles/${req.file.filename}`;
+    let idCardFrontPic = null;
+    let idCardBackPic = null;
+
+    if (req.files) {
+      if (req.files.profilePicture) {
+        profilePicture = `/uploads/profiles/${req.files.profilePicture[0].filename}`;
+      }
+      if (req.files.idCardFrontPic) {
+        idCardFrontPic = `/uploads/documents/${req.files.idCardFrontPic[0].filename}`;
+      }
+      if (req.files.idCardBackPic) {
+        idCardBackPic = `/uploads/documents/${req.files.idCardBackPic[0].filename}`;
+      }
+    }
+
+    // Validate required ID card pictures
+    if (!idCardFrontPic || !idCardBackPic) {
+      return res.status(400).json({
+        success: false,
+        message: 'Both ID card front and back pictures are required'
+      });
     }
 
     // Create new user
@@ -45,6 +99,10 @@ const register = async (req, res) => {
       lastName,
       email,
       password,
+      phone,
+      idCardNumber,
+      idCardFrontPic,
+      idCardBackPic,
       role: role || 'internee',
       teamLeadId: role === 'internee' ? teamLeadId : null,
       profilePicture
@@ -177,16 +235,58 @@ const getProfile = async (req, res) => {
 // Update user profile
 const updateProfile = async (req, res) => {
   try {
-    const { firstName, lastName } = req.body;
+    const { firstName, lastName, phone } = req.body;
     const userId = req.user.id;
+
+    // Validate phone number format if provided
+    if (phone) {
+      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+      if (!phoneRegex.test(phone)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid phone number format'
+        });
+      }
+
+      // Check if phone number already exists for another user
+      const existingPhone = await User.findOne({ 
+        where: { 
+          phone,
+          id: { [require('sequelize').Op.ne]: userId }
+        } 
+      });
+      if (existingPhone) {
+        return res.status(400).json({
+          success: false,
+          message: 'Phone number already exists'
+        });
+      }
+    }
 
     const updateData = {};
     if (firstName) updateData.firstName = firstName;
     if (lastName) updateData.lastName = lastName;
+    if (phone) updateData.phone = phone;
 
-    // Handle profile picture upload
-    if (req.file) {
-      updateData.profilePicture = `/uploads/profiles/${req.file.filename}`;
+    // Handle file uploads
+    if (req.files) {
+      if (req.files.profilePicture) {
+        updateData.profilePicture = `/uploads/documents/${req.files.profilePicture[0].filename}`;
+      }
+      if (req.files.idCardFrontPic) {
+        updateData.idCardFrontPic = `/uploads/documents/${req.files.idCardFrontPic[0].filename}`;
+      }
+      if (req.files.idCardBackPic) {
+        updateData.idCardBackPic = `/uploads/documents/${req.files.idCardBackPic[0].filename}`;
+      }
+    }
+
+    // If no data to update
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid fields provided for update'
+      });
     }
 
     await User.update(updateData, {
@@ -194,7 +294,13 @@ const updateProfile = async (req, res) => {
     });
 
     const updatedUser = await User.findByPk(userId, {
-      attributes: { exclude: ['password'] }
+      attributes: { exclude: ['password'] },
+      include: [{
+        model: User,
+        as: 'teamLead',
+        attributes: ['id', 'firstName', 'lastName', 'email'],
+        required: false
+      }]
     });
 
     res.json({
@@ -212,9 +318,69 @@ const updateProfile = async (req, res) => {
   }
 };
 
+// Change password
+const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    // Validate input
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password and new password are required'
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters long'
+      });
+    }
+
+    // Get user with password
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Verify current password
+    const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+    if (!isCurrentPasswordValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password is incorrect'
+      });
+    }
+
+    // Update password (will be hashed by the model hook)
+    await User.update(
+      { password: newPassword },
+      { where: { id: userId } }
+    );
+
+    res.json({
+      success: true,
+      message: 'Password changed successfully'
+    });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to change password',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
   getProfile,
-  updateProfile
+  updateProfile,
+  changePassword
 };
