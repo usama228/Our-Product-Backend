@@ -1,18 +1,24 @@
 # 🎓 Internship Management System - Backend
 
-This is the backend server for our internship management system. It handles user authentication, task management, and file uploads. Think of it as the brain that processes all the requests from the frontend and talks to the database.
+This is the backend server for our internship management system. It handles user authentication, task management, and file uploads with comprehensive role-based access control and secure user management.
 
-![Status](https://img.shields.io/badge/Status-Under%20Development-orange)
+![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
 ![Node.js](https://img.shields.io/badge/Node.js-Express-green)
 ![Database](https://img.shields.io/badge/Database-PostgreSQL-blue)
+![API Docs](https://img.shields.io/badge/API%20Docs-Swagger-85EA2D)
 
 ## What does this backend do?
 
-- **User Management**: Register, login, and manage user profiles
-- **Task System**: Create, assign, and track tasks between admins and internees
-- **File Uploads**: Handle profile pictures and task submission files
-- **Authentication**: Secure login system with JWT tokens
-- **Role-Based Access**: Different permissions for admins, team leads, and internees
+- **Admin-Only User Creation**: Only admins can register new users with role assignment
+- **ID Card Verification**: Required ID card front/back photos for all new users
+- **Phone Number Management**: Unique phone numbers with validation
+- **Profile Management**: Users can update personal info, photos, and passwords
+- **User Status Control**: Admins can activate/deactivate accounts
+- **Role Management**: Dynamic role updates and team assignments
+- **Task System**: Complete task lifecycle with file submissions and feedback
+- **File Uploads**: Secure handling of profile pictures, ID cards, and task files
+- **JWT Authentication**: Secure token-based authentication system
+- **Comprehensive API**: Full REST API with Swagger documentation
 
 ## � Who can do what?
 
@@ -27,17 +33,21 @@ This is the backend server for our internship management system. It handles user
 
 ### 🔐 User Authentication (`/api/auth`)
 
-- **Register**: `POST /api/auth/register` - Create a new account
+- **Register**: `POST /api/auth/register` - Admin-only user creation with ID card verification
 - **Login**: `POST /api/auth/login` - Sign in to get access token
 - **Profile**: `GET /api/auth/profile` - Get your profile info
-- **Update Profile**: `PUT /api/auth/profile` - Change your name or picture
+- **Update Profile**: `PUT /api/auth/profile` - Update name, phone, profile pic, ID card photos
+- **Change Password**: `PUT /api/auth/change-password` - Secure password change
 
 ### 👥 User Management (`/api/users`)
 
-- **All Users**: `GET /api/users` - Get list of all users (Admin only)
-- **Team Leads**: `GET /api/users/team-leads` - Get all team leads
+- **All Users**: `GET /api/users` - Get list of all users with phone and ID info (Admin only)
+- **Team Leads**: `GET /api/users/team-leads` - Get all team leads for assignments
 - **Internees**: `GET /api/users/internees` - Get internees under a team lead
-- **Dashboard Stats**: `GET /api/users/dashboard-stats` - Get numbers for dashboard
+- **Internees by Team**: `GET /api/users/internees/:teamLeadId` - Get specific team's internees
+- **Dashboard Stats**: `GET /api/users/dashboard-stats` - Get comprehensive system statistics
+- **Update Status**: `PUT /api/users/:userId/status` - Activate/deactivate user accounts (Admin only)
+- **Update Role**: `PUT /api/users/:userId/role` - Change user role and team assignment (Admin only)
 
 ### 📋 Task Management (`/api/tasks`)
 
@@ -55,10 +65,14 @@ This is the backend server for our internship management system. It handles user
 
 Each user has:
 
-- Basic info (name, email, password)
-- Role (admin, team_lead, employee, internee)
-- Profile picture (optional)
-- Team lead assignment (for internees)
+- **Basic info**: firstName, lastName, email, encrypted password
+- **Contact**: phone number (unique and validated)
+- **Identity**: idCardNumber (unique), idCardFrontPic, idCardBackPic (required)
+- **Role**: admin, team_lead, employee, internee
+- **Profile**: profilePicture (optional)
+- **Team**: teamLeadId (for internees)
+- **Status**: isActive (can be toggled by admin)
+- **Timestamps**: createdAt, updatedAt
 
 ### Tasks Table
 
@@ -76,15 +90,23 @@ Each task has:
 
 ### What files can be uploaded?
 
-- **Profile Pictures**: Up to 5MB, images only (jpg, png, etc.)
+- **Profile Pictures**: Up to 5MB, images only (jpg, png, etc.) - Optional
+- **ID Card Photos**: Up to 5MB, images only - **Required for registration**
 - **Task Submissions**: Up to 10MB, various formats (images, PDFs, Word docs, zip files)
 
 ### Where are files stored?
 
-- Profile pictures go to `/uploads/profiles/`
+- Profile pictures and ID cards go to `/uploads/documents/`
 - Task files go to `/uploads/tasks/`
-- Files get unique names to avoid conflicts
+- Files get unique names with prefixes (profile-, id-front-, id-back-, task-)
 - Access them at `http://localhost:5000/uploads/...`
+
+### File Upload Security
+
+- **Type validation**: Only allowed file types accepted
+- **Size limits**: Enforced at middleware level
+- **Unique naming**: Prevents file conflicts and overwrites
+- **Directory structure**: Organized by file type and purpose
 
 ## 🔄 How tasks work
 
@@ -149,11 +171,15 @@ It's like a simple workflow: Create → Submit → Review → Done (or back to S
 
 After setting up, you can login with these test accounts:
 
-| Role      | Email                      | Password    |
-| --------- | -------------------------- | ----------- |
-| Admin     | admin@company.com          | admin123    |
-| Team Lead | rahimeen.altaf@company.com | teamlead123 |
-| Internee  | areesha.maryam@company.com | internee123 |
+| Role               | Email                      | Password    | Phone       | ID Card         |
+| ------------------ | -------------------------- | ----------- | ----------- | --------------- |
+| **👑 Admin**       | admin@company.com          | admin123    | 03001234567 | 12345-6789012-3 |
+| **👨‍💼 Team Lead 1** | rahimeen.altaf@company.com | teamlead123 | 03001234568 | 12345-6789012-4 |
+| **👨‍💼 Team Lead 2** | alina.ali@company.com      | teamlead123 | 03001234569 | 12345-6789012-5 |
+| **👨‍💻 Employee**    | ahmed.ali@company.com      | employee123 | 03001234570 | 12345-6789012-6 |
+| **🎓 Internee 1**  | areesha.maryam@company.com | internee123 | 03001234571 | 12345-6789012-7 |
+| **🎓 Internee 2**  | shazia.khan@company.com    | internee123 | 03001234572 | 12345-6789012-8 |
+| **🎓 Internee 3**  | anila.ali@company.com      | internee123 | 03001234573 | 12345-6789012-9 |
 
 ## 📋 Useful commands
 
@@ -187,13 +213,18 @@ npm run seed        # Add sample data to database
 }
 ```
 
-## 🔒 Security stuff we handle
+## 🔒 Security Features
 
-- **Passwords**: Encrypted before storing in database
-- **Login tokens**: Expire after 7 days for security
-- **File uploads**: Check file types and sizes
-- **API access**: Different permissions for different roles
-- **Database**: Protected against common attacks
+- **Password Encryption**: Bcrypt with 12 salt rounds
+- **JWT Tokens**: 7-day expiration with secure secret
+- **Role-Based Access**: Middleware enforces permissions
+- **File Upload Security**: Type validation, size limits, secure storage
+- **Input Validation**: Comprehensive validation for all fields
+- **Phone Number Validation**: Format checking and uniqueness
+- **ID Card Verification**: Required for all new users
+- **SQL Injection Protection**: Sequelize ORM prevents attacks
+- **User Status Control**: Admins can deactivate compromised accounts
+- **Password Change Security**: Current password verification required
 
 ## 🐛 Common problems and fixes
 

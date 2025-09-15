@@ -35,6 +35,22 @@ const taskStorage = multer.diskStorage({
   }
 });
 
+// Storage configuration for documents (ID cards)
+const documentStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadPath = path.join(__dirname, '../uploads/documents');
+    ensureDirectoryExists(uploadPath);
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const prefix = file.fieldname === 'idCardFrontPic' ? 'id-front-' : 
+                   file.fieldname === 'idCardBackPic' ? 'id-back-' : 
+                   file.fieldname === 'profilePicture' ? 'profile-' : 'doc-';
+    cb(null, prefix + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
 const imageFilter = (req, file, cb) => {
   if (file.mimetype.startsWith('image/')) {
     cb(null, true);
@@ -76,7 +92,17 @@ const uploadTaskFile = multer({
   }
 });
 
+// Document upload configuration (for ID cards and profile pictures)
+const uploadDocuments = multer({
+  storage: documentStorage,
+  fileFilter: imageFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  }
+});
+
 module.exports = {
   uploadProfile,
-  uploadTaskFile
+  uploadTaskFile,
+  uploadDocuments
 };
