@@ -19,12 +19,12 @@ const register = async (req, res) => {
       });
     }
 
-    // Validate phone number format (basic validation)
-    const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+    // Corrected Phone Number Regex
+    const phoneRegex = /^((\+92)|(0092))\d{10}$|^0\d{10}$/;
     if (!phoneRegex.test(phone)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid phone number format'
+        message: 'Invalid phone number format. Use 03xxxxxxxxx, +923xxxxxxxxx, or 00923xxxxxxxxx.'
       });
     }
 
@@ -240,11 +240,12 @@ const updateProfile = async (req, res) => {
 
     // Validate phone number format if provided
     if (phone) {
-      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+      // Corrected Phone Number Regex
+      const phoneRegex = /^((\+92)|(0092))\d{10}$|^0\d{10}$/;
       if (!phoneRegex.test(phone)) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid phone number format'
+          message: 'Invalid phone number format. Use 03xxxxxxxxx, +923xxxxxxxxx, or 00923xxxxxxxxx.'
         });
       }
 

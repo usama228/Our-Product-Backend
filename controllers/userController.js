@@ -1,4 +1,5 @@
 const { User, Task } = require("../models");
+const { Op } = require("sequelize");
 
 // Get all users (Admin only)
 const getAllUsers = async (req, res) => {
@@ -79,21 +80,34 @@ const getTeamLeads = async (req, res) => {
 // Get internees under a team lead
 const getInternees = async (req, res) => {
   try {
-    const { teamLeadId } = req.params;
+    const { user } = req;
+    const teamLeadId = req.params.teamLeadId || user.id;
 
-    let condition = { role: "internee" };
-    if (teamLeadId) {
-      condition.teamLeadId = teamLeadId;
+    let whereClause = { role: 'internee' };
+
+    if (user.role === 'team_lead') {
+      whereClause.teamLeadId = teamLeadId;
+    } else if (user.role !== 'admin') {
+      // If not an admin or a team lead, return empty list
+      return res.json({ success: true, data: { users: [] } });
     }
 
     const internees = await User.findAll({
-      where: condition,
-      attributes: ["id", "firstName", "lastName", "email"],
+      where: whereClause,
+      attributes: ["id", "firstName", "lastName", "email", "isActive", "role", "teamLeadId"],
+      include: [
+        {
+          model: Task,
+          as: 'assignedTasks',
+          attributes: ['id', 'title', 'status', 'priority', 'dueDate'],
+          required: false
+        }
+      ]
     });
 
     res.json({
       success: true,
-      data: { internees },
+      data: { users: internees },
     });
   } catch (error) {
     console.error("Get internees error:", error);
@@ -215,46 +229,73 @@ const updateUserRole = async (req, res) => {
   }
 };
 
-// Get dashboard stats
+// Get dashboard stats based on user role
 const getDashboardStats = async (req, res) => {
-  try {
-    const totalUsers = await User.count();
-    const totalInternees = await User.count({ where: { role: "internee" } });
-    const totalTeamLeads = await User.count({ where: { role: "team_lead" } });
-    const totalEmployees = await User.count({ where: { role: "employee" } });
-    const activeUsers = await User.count({ where: { isActive: true } });
+    const { user } = req;
+    let stats = {};
 
-    const totalTasks = await Task.count();
-    const assignedTasks = await Task.count({ where: { status: "assigned" } });
-    const submittedTasks = await Task.count({ where: { status: "submitted" } });
-    const acceptedTasks = await Task.count({ where: { status: "accepted" } });
-    const rejectedTasks = await Task.count({ where: { status: "rejected" } });
+    try {
+        switch (user.role) {
+            case 'admin': {
+                const [totalUsers, totalInternees, totalTeamLeads, totalEmployees, totalTasks, pendingTasks, completedTasks, rejectedTasks] = await Promise.all([
+                    User.count(),
+                    User.count({ where: { role: "internee" } }),
+                    User.count({ where: { role: "team_lead" } }),
+                    User.count({ where: { role: "employee" } }),
+                    Task.count(),
+                    Task.count({ where: { status: 'submitted' } }),
+                    Task.count({ where: { status: 'accepted' } }), // Corrected value
+                    Task.count({ where: { status: 'rejected' } })
+                ]);
+                stats = { totalUsers, totalInternees, totalTeamLeads, totalEmployees, totalTasks, pendingTasks, completedTasks, rejectedTasks };
+                break;
+            }
+            case 'team_lead': {
+                const myInternees = await User.findAll({ 
+                    where: { role: 'internee', teamLeadId: user.id },
+                    attributes: ['id']
+                });
+                const interneeIds = myInternees.map(i => i.id);
 
-    res.json({
-      success: true,
-      data: {
-        stats: {
-          totalUsers,
-          totalInternees,
-          totalTeamLeads,
-          totalEmployees,
-          activeUsers,
-          totalTasks,
-          assignedTasks,
-          submittedTasks,
-          acceptedTasks,
-          rejectedTasks,
-        },
-      },
-    });
-  } catch (error) {
-    console.error("Get dashboard stats error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch dashboard stats",
-      error: error.message,
-    });
-  }
+                if (interneeIds.length > 0) {
+                    const [totalInternees, activeInternees, totalTasks, pendingTasks] = await Promise.all([
+                        User.count({ where: { id: { [Op.in]: interneeIds } } }),
+                        User.count({ where: { id: { [Op.in]: interneeIds }, isActive: true } }),
+                        Task.count({ where: { assigneeId: { [Op.in]: interneeIds } } }),
+                        Task.count({ where: { assigneeId: { [Op.in]: interneeIds }, status: 'submitted' } })
+                    ]);
+                    stats = { totalInternees, activeInternees, totalTasks, pendingTasks };
+                } else {
+                    stats = { totalInternees: 0, activeInternees: 0, totalTasks: 0, pendingTasks: 0 };
+                }
+                break;
+            }
+            case 'employee':
+            case 'internee': {
+                 const [totalTasks, pendingTasks, completedTasks, acceptedTasks] = await Promise.all([
+                    Task.count({ where: { assigneeId: user.id } }),
+                    Task.count({ where: { assigneeId: user.id, status: 'assigned' } }),
+                    Task.count({ where: { assigneeId: user.id, status: 'accepted' } }), // Corrected value
+                    Task.count({ where: { assigneeId: user.id, status: 'accepted' } })
+                ]);
+                stats = { totalTasks, pendingTasks, completedTasks, acceptedTasks };
+                break;
+            }
+        }
+
+        res.json({
+            success: true,
+            data: { stats },
+        });
+
+    } catch (error) {
+        console.error("Get dashboard stats error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch dashboard stats",
+            error: error.message,
+        });
+    }
 };
 
 module.exports = {
