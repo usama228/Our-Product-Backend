@@ -12,7 +12,9 @@ const taskRoutes = require('./routes/taskRoutes');
 
 const app = express();
 
-app.use(helmet());
+// Configure Helmet to allow cross-origin resource sharing
+app.use(helmet({ crossOriginResourcePolicy: false }));
+
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
