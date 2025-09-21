@@ -5,15 +5,48 @@ const { Op } = require('sequelize');
 const getMyTasks = async (req, res) => {
   try {
     const assigneeId = req.user.id;
-    const tasks = await Task.findAll({
-      where: { assigneeId },
+    const { page = 1, limit = 10, search = '', status = '', priority = '' } = req.query;
+
+    const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const searchLimit = parseInt(limit, 10);
+
+    const whereClause = { assigneeId };
+
+    if (status) {
+      whereClause.status = status;
+    }
+    if (priority) {
+      whereClause.priority = priority;
+    }
+    if (search) {
+      whereClause.title = { [Op.iLike]: `%${search}%` };
+    }
+
+    const { count, rows: tasks } = await Task.findAndCountAll({
+      where: whereClause,
       include: [
         { model: User, as: 'assigner', attributes: ['id', 'firstName', 'lastName'] },
         { model: User, as: 'assignee', attributes: ['id', 'firstName', 'lastName'] },
       ],
       order: [['createdAt', 'DESC']],
+      limit: searchLimit,
+      offset: offset,
     });
-    res.json({ success: true, data: { tasks } });
+
+    const totalPages = Math.ceil(count / searchLimit);
+
+    res.json({
+      success: true,
+      data: {
+        tasks,
+        pagination: {
+          total: count,
+          page: parseInt(page, 10),
+          limit: searchLimit,
+          totalPages,
+        },
+      },
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch tasks', error: error.message });
   }
@@ -32,52 +65,80 @@ const createTask = async (req, res) => {
       priority: priority || 'medium',
       status: 'assigned',
     });
-    res.status(201).json({ success: true, message: 'Task created successfully', data: { task } });
+    res.status(201).json({ success: true, message: 'Task created successfully', data: task });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to create task', error: error.message });
   }
 };
 
 const getAllTasks = async (req, res) => {
-  try {
-    const { user } = req;
-    let whereClause = {};
+    try {
+        const { user } = req;
+        const { page = 1, limit = 10, search = '', status = '', priority = '' } = req.query;
 
-    if (user.role === 'team_lead') {
-      const myInterns = await User.findAll({
-        where: { teamLeadId: user.id, role: 'internee' },
-        attributes: ['id'],
-      });
-      const internIds = myInterns.map(intern => intern.id);
+        const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+        const searchLimit = parseInt(limit, 10);
 
-      // Team lead sees tasks they assigned, tasks assigned to them, OR tasks assigned to their interns
-      const orConditions = [
-        { assignerId: user.id },
-        { assigneeId: user.id }
-      ];
-      if (internIds.length > 0) {
-        orConditions.push({ assigneeId: { [Op.in]: internIds } });
-      }
-      whereClause = { [Op.or]: orConditions };
+        let whereClause = {};
+        const andConditions = [];
 
-    } else if (user.role === 'internee' || user.role === 'employee') {
-      // Internees or employees can only see their own tasks
-      whereClause.assigneeId = user.id;
+        if (status) andConditions.push({ status: status });
+        if (priority) andConditions.push({ priority: priority });
+        if (search) andConditions.push({ title: { [Op.iLike]: `%${search}%` } });
+
+        if (user.role === 'team_lead') {
+            const myInterns = await User.findAll({
+                where: { teamLeadId: user.id, role: 'internee' },
+                attributes: ['id'],
+            });
+            const internIds = myInterns.map(intern => intern.id);
+            
+            const orConditions = [
+                { assignerId: user.id },
+                { assigneeId: user.id },
+            ];
+            if (internIds.length > 0) {
+                orConditions.push({ assigneeId: { [Op.in]: internIds } });
+            }
+            andConditions.push({ [Op.or]: orConditions });
+
+        } else if (user.role === 'internee' || user.role === 'employee') {
+            andConditions.push({ assigneeId: user.id });
+        }
+
+        if (andConditions.length > 0) {
+            whereClause = { [Op.and]: andConditions };
+        }
+
+        const { count, rows: tasks } = await Task.findAndCountAll({
+            where: whereClause,
+            include: [
+                { model: User, as: 'assigner', attributes: ['id', 'firstName', 'lastName'] },
+                { model: User, as: 'assignee', attributes: ['id', 'firstName', 'lastName'] },
+            ],
+            order: [['createdAt', 'DESC']],
+            limit: searchLimit,
+            offset: offset,
+        });
+
+        const totalPages = Math.ceil(count / searchLimit);
+
+        res.json({
+            success: true,
+            data: {
+                tasks,
+                pagination: {
+                    total: count,
+                    page: parseInt(page, 10),
+                    limit: searchLimit,
+                    totalPages,
+                },
+            },
+        });
+    } catch (error) {
+        console.error("Error in getAllTasks:", error);
+        res.status(500).json({ success: false, message: 'Failed to fetch tasks', error: error.message });
     }
-    // For 'admin', the whereClause remains empty to get all tasks.
-
-    const tasks = await Task.findAll({
-      where: whereClause,
-      include: [
-        { model: User, as: 'assigner', attributes: ['id', 'firstName', 'lastName'] },
-        { model: User, as: 'assignee', attributes: ['id', 'firstName', 'lastName'] },
-      ],
-      order: [['createdAt', 'DESC']],
-    });
-    res.json({ success: true, data: { tasks } });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to fetch tasks', error: error.message });
-  }
 };
 
 const getTaskById = async (req, res) => {
@@ -101,21 +162,21 @@ const getTaskById = async (req, res) => {
       canView = true;
     } else if (role === 'team_lead') {
       const isAssigner = String(task.assignerId) === String(userId);
-      const isAssignee = String(task.assigneeId) === String(userId); // Check if team lead is the assignee
+      const isAssignee = String(task.assigneeId) === String(userId); 
       const isInternsTask = task.assignee &&
                             task.assignee.role === 'internee' &&
                             String(task.assignee.teamLeadId) === String(userId);
-      if (isAssigner || isInternsTask || isAssignee) { // Added isAssignee
+      if (isAssigner || isInternsTask || isAssignee) { 
         canView = true;
       }
-    } else { // For 'internee' and 'employee'
+    } else { 
       if (String(task.assigneeId) === String(userId)) {
         canView = true;
       }
     }
 
     if (canView) {
-      res.json({ success: true, data: { task } });
+      res.json({ success: true, data: task });
     } else {
       res.status(403).json({ success: false, message: 'Access Denied to page' });
     }
@@ -134,7 +195,7 @@ const updateTaskStatus = async (req, res) => {
     }
     task.status = status;
     await task.save();
-    res.json({ success: true, message: 'Task status updated successfully', data: { task } });
+    res.json({ success: true, message: 'Task status updated successfully', data: task });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to update task status', error: error.message });
   }
@@ -159,7 +220,7 @@ const submitTask = async (req, res) => {
     task.submissionFile = submissionFile;
     task.submittedAt = new Date();
     await task.save();
-    res.json({ success: true, message: 'Task submitted successfully', data: { task } });
+    res.json({ success: true, message: 'Task submitted successfully', data: task });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to submit task', error: error.message });
   }
@@ -181,10 +242,10 @@ const acceptTask = async (req, res) => {
     task.status = 'accepted';
     task.feedback = feedback || null;
     await task.save();
-    res.json({ success: true, message: 'Task accepted successfully', data: { task } });
+    res.json({ success: true, message: 'Task accepted successfully', data: task });
   } catch (error) {
     console.error('Error accepting task:', error);
-    res.status(500).json({ success: false, message: 'Failed to accept task', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to reject task', error: error.message });
   }
 };
 
@@ -204,7 +265,7 @@ const rejectTask = async (req, res) => {
     task.status = 'rejected';
     task.feedback = feedback || null;
     await task.save();
-    res.json({ success: true, message: 'Task rejected successfully', data: { task } });
+    res.json({ success: true, message: 'Task rejected successfully', data: task });
   } catch (error) {
     console.error('Error rejecting task:', error);
     res.status(500).json({ success: false, message: 'Failed to reject task', error: error.message });
@@ -221,7 +282,7 @@ const deleteTask = async (req, res) => {
     await task.destroy();
     res.json({ success: true, message: 'Task deleted successfully' });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to delete task', error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to delete task', error: a.message });
   }
 };
 

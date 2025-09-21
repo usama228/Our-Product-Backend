@@ -2,7 +2,7 @@ const express = require('express');
 const {
   createTask,
   getAllTasks,
-  getMyTasks, // Import the new function
+  getMyTasks,
   getTaskById,
   updateTaskStatus,
   submitTask,
@@ -15,9 +15,10 @@ const {
   authenticateToken,
   authorizeRoles,
   requireAdmin,
-  requireTeamLead
 } = require('../middleware/auth');
-const { uploadTaskFile } = require('../middleware/upload');
+
+// Correctly import the specific middleware for task submissions
+const { uploadTaskSubmission } = require('../middleware/upload'); 
 
 const router = express.Router();
 
@@ -36,8 +37,8 @@ router.get('/:id', authenticateToken, getTaskById);
 // Update task status (team lead or admin)
 router.patch('/:id/status', authenticateToken, authorizeRoles('admin', 'team_lead'), updateTaskStatus);
 
-// Submit task (employee or internee)
-router.post('/:id/submit', authenticateToken, authorizeRoles('employee', 'internee'), uploadTaskFile.single('submissionFile'), submitTask);
+// Submit task (employee or internee) - USES THE CORRECT MIDDLEWARE
+router.post('/:id/submit', authenticateToken, authorizeRoles('employee', 'internee'), uploadTaskSubmission.single('submissionFile'), submitTask);
 
 // Accept task (team lead or admin)
 router.post('/:id/accept', authenticateToken, authorizeRoles('admin', 'team_lead'), acceptTask);

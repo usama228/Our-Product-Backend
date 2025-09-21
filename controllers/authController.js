@@ -272,7 +272,7 @@ const updateProfile = async (req, res) => {
     // Handle file uploads
     if (req.files) {
       if (req.files.profilePicture) {
-        updateData.profilePicture = `/uploads/documents/${req.files.profilePicture[0].filename}`;
+        updateData.profilePicture = `/uploads/profiles/${req.files.profilePicture[0].filename}`;
       }
       if (req.files.idCardFrontPic) {
         updateData.idCardFrontPic = `/uploads/documents/${req.files.idCardFrontPic[0].filename}`;
@@ -321,67 +321,142 @@ const updateProfile = async (req, res) => {
 
 // Change password
 const changePassword = async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const userId = req.user.id;
+    try {
+        const { currentPassword, newPassword } = req.body;
+        const userId = req.user.id;
 
-    // Validate input
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'Current password and new password are required'
-      });
+        // Validate input
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'Current password and new password are required'
+            });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'New password must be at least 6 characters long'
+            });
+        }
+
+        // Get user with password
+        const user = await User.findByPk(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Verify current password
+        const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+        if (!isCurrentPasswordValid) {
+            return res.status(400).json({
+                success: false,
+                message: 'Current password is incorrect'
+            });
+        }
+
+        // Update password and save user
+        user.set('password', newPassword);
+        await user.save();
+
+        res.json({
+            success: true,
+            message: 'Password changed successfully'
+        });
+
+    } catch (error) {
+        console.error('Change password error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to change password',
+            error: error.message
+        });
     }
-
-    if (newPassword.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'New password must be at least 6 characters long'
-      });
-    }
-
-    // Get user with password
-    const user = await User.findByPk(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Verify current password
-    const isCurrentPasswordValid = await user.comparePassword(currentPassword);
-    if (!isCurrentPasswordValid) {
-      return res.status(400).json({
-        success: false,
-        message: 'Current password is incorrect'
-      });
-    }
-
-    // Update password (will be hashed by the model hook)
-    await User.update(
-      { password: newPassword },
-      { where: { id: userId } }
-    );
-
-    res.json({
-      success: true,
-      message: 'Password changed successfully'
-    });
-  } catch (error) {
-    console.error('Change password error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to change password',
-      error: error.message
-    });
-  }
 };
+
+
+// Admin change password
+const adminChangePassword = async (req, res) => {
+    try {
+        const { userId, newPassword } = req.body;
+        const requesterId = req.user.id; // ID of the user making the request
+
+        // Validate input
+        if (!userId || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID and new password are required'
+            });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'New password must be at least 6 characters long'
+            });
+        }
+
+        // Get the user whose password is being changed
+        const userToUpdate = await User.findByPk(userId);
+        if (!userToUpdate) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Get the user who is making the request
+        const requester = await User.findByPk(requesterId);
+        if (!requester) {
+            return res.status(404).json({
+                success: false,
+                message: 'Requesting user not found'
+            });
+        }
+
+        // Authorization check
+        if (requester.role === 'team_lead') {
+            if (userToUpdate.role !== 'internee' || userToUpdate.teamLeadId !== requesterId) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'You are not authorized to change this user\'s password'
+                });
+            }
+        } else if (requester.role !== 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'You are not authorized to perform this action'
+            });
+        }
+
+        // Set the new password and save the user
+        userToUpdate.set('password', newPassword);
+        await userToUpdate.save();
+
+        res.json({
+            success: true,
+            message: `Password for ${userToUpdate.email} changed successfully`
+        });
+
+    } catch (error) {
+        console.error('Admin change password error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to change password',
+            error: error.message
+        });
+    }
+};
+
 
 module.exports = {
   register,
   login,
   getProfile,
   updateProfile,
-  changePassword
+  changePassword,
+  adminChangePassword,
 };

@@ -2,107 +2,86 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure upload directories exist
-const ensureDirectoryExists = (dirPath) => {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-  }
-};
+// --- Base Directories ---
+const baseDir = path.join(__dirname, '../uploads');
+const profileDir = path.join(baseDir, 'profiles');
+const documentDir = path.join(baseDir, 'documents');
+const taskDir = path.join(baseDir, 'tasks');
 
-// Storage configuration for profile pictures
-const profileStorage = multer.diskStorage({
+// --- Ensure all directories exist ---
+fs.mkdirSync(profileDir, { recursive: true });
+fs.mkdirSync(documentDir, { recursive: true });
+fs.mkdirSync(taskDir, { recursive: true });
+
+// --- Dynamic Storage Engine ---
+const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, '../uploads/profiles');
-    ensureDirectoryExists(uploadPath);
-    cb(null, uploadPath);
+    // Route files to the correct directory based on the form field name
+    if (file.fieldname === 'profilePicture') {
+      cb(null, profileDir);
+    } else if (file.fieldname === 'idCardFrontPic' || file.fieldname === 'idCardBackPic') {
+      cb(null, documentDir);
+    } else if (file.fieldname === 'submissionFile') {
+      cb(null, taskDir);
+    } else {
+      // Fallback for any unexpected files
+      cb(new Error('Invalid file field name'), baseDir);
+    }
   },
   filename: (req, file, cb) => {
+    // Create a unique filename to prevent collisions
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'profile-' + uniqueSuffix + path.extname(file.originalname));
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
-// Storage configuration for task submissions
-const taskStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, '../uploads/tasks');
-    ensureDirectoryExists(uploadPath);
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'task-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-// Storage configuration for documents (ID cards)
-const documentStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, '../uploads/documents');
-    ensureDirectoryExists(uploadPath);
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const prefix = file.fieldname === 'idCardFrontPic' ? 'id-front-' : 
-                   file.fieldname === 'idCardBackPic' ? 'id-back-' : 
-                   file.fieldname === 'profilePicture' ? 'profile-' : 'doc-';
-    cb(null, prefix + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const imageFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) {
+// --- File Filter for User Images ---
+const userImageFileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('image')) {
     cb(null, true);
   } else {
-    cb(new Error('Only image files are allowed for profile pictures'), false);
+    cb(new Error('Not an image! Please upload only images.'), false);
   }
 };
 
-const taskFileFilter = (req, file, cb) => {
-  const allowedTypes = [
-    'image/', 'application/pdf', 'application/msword',
+// --- File Filter for Task Submissions ---
+// Allows a wider range of file types for task submissions
+const taskSubmissionFileFilter = (req, file, cb) => {
+  const allowedMimes = [
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'application/pdf',
+    'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'text/plain', 'application/zip', 'application/x-zip-compressed'
+    'application/zip',
+    'application/x-rar-compressed'
   ];
-  
-  const isAllowed = allowedTypes.some(type => file.mimetype.startsWith(type));
-  
-  if (isAllowed) {
+  if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('File type not allowed for task submissions'), false);
+    cb(new Error('Invalid file type. Please upload a valid document or image.'), false);
   }
 };
 
-// Multer configurations
-const uploadProfile = multer({
-  storage: profileStorage,
-  fileFilter: imageFilter,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
-  }
+// --- Multer Instances ---
+
+// Middleware for handling user-related file uploads (profile picture, ID cards)
+const uploadUserFiles = multer({
+  storage: storage,
+  fileFilter: userImageFileFilter,
+  limits: { fileSize: 1024 * 1024 * 5 } // 5MB limit
 });
 
-const uploadTaskFile = multer({
-  storage: taskStorage,
-  fileFilter: taskFileFilter,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  }
+// Middleware for handling task submission files
+const uploadTaskSubmission = multer({
+  storage: storage,
+  fileFilter: taskSubmissionFileFilter,
+  limits: { fileSize: 1024 * 1024 * 10 } // 10MB limit for task files
 });
 
-// Document upload configuration (for ID cards and profile pictures)
-const uploadDocuments = multer({
-  storage: documentStorage,
-  fileFilter: imageFilter,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
-  }
-});
-
+// --- Exports ---
 module.exports = {
-  uploadProfile,
-  uploadTaskFile,
-  uploadDocuments
+  uploadUserFiles,
+  uploadTaskSubmission
 };
