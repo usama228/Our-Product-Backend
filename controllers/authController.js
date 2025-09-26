@@ -1,18 +1,25 @@
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
+const sendEmail = require('../utils/sendEmail');
+const { sequelize } = require('../models');
+
 const generateToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, {
+ return jwt.sign({ userId }, process.env.JWT_SECRET, {
     expiresIn: '7d'
   });
 };
 
 // Register new user (Admin only)
 const register = async (req, res) => {
+  // Start a transaction
+  const t = await sequelize.transaction();
+
   try {
     const { firstName, lastName, email, password, phone, idCardNumber, role, teamLeadId } = req.body;
 
     // Validate required fields
     if (!firstName || !lastName || !email || !password || !phone || !idCardNumber) {
+      await t.rollback();
       return res.status(400).json({
         success: false,
         message: 'All required fields must be provided'
@@ -22,49 +29,35 @@ const register = async (req, res) => {
     // Corrected Phone Number Regex
     const phoneRegex = /^((\+92)|(0092))\d{10}$|^0\d{10}$/;
     if (!phoneRegex.test(phone)) {
+      await t.rollback();
       return res.status(400).json({
         success: false,
         message: 'Invalid phone number format. Use 03xxxxxxxxx, +923xxxxxxxxx, or 00923xxxxxxxxx.'
       });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'User with this email already exists'
-      });
-    }
+    // Check for existing user/email/phone/ID
+    const [existingUser, existingPhone, existingIdCard] = await Promise.all([
+      User.findOne({ where: { email } }),
+      User.findOne({ where: { phone } }),
+      User.findOne({ where: { idCardNumber } })
+    ]);
 
-    // Check if phone number already exists
-    const existingPhone = await User.findOne({ where: { phone } });
-    if (existingPhone) {
-      return res.status(400).json({
-        success: false,
-        message: 'User with this phone number already exists'
-      });
-    }
-
-    // Check if ID card number already exists
-    const existingIdCard = await User.findOne({ where: { idCardNumber } });
-    if (existingIdCard) {
-      return res.status(400).json({
-        success: false,
-        message: 'User with this ID card number already exists'
-      });
+    if (existingUser || existingPhone || existingIdCard) {
+      await t.rollback();
+      let message = '';
+      if (existingUser) message = 'User with this email already exists';
+      else if (existingPhone) message = 'User with this phone number already exists';
+      else message = 'User with this ID card number already exists';
+      return res.status(400).json({ success: false, message });
     }
 
     // Validate team lead assignment for internees
     if (role === 'internee' && teamLeadId) {
-      const teamLead = await User.findOne({
-        where: { id: teamLeadId, role: 'team_lead' }
-      });
+      const teamLead = await User.findOne({ where: { id: teamLeadId, role: 'team_lead' } });
       if (!teamLead) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid team lead assignment'
-        });
+        await t.rollback();
+        return res.status(400).json({ success: false, message: 'Invalid team lead assignment' });
       }
     }
 
@@ -74,26 +67,20 @@ const register = async (req, res) => {
     let idCardBackPic = null;
 
     if (req.files) {
-      if (req.files.profilePicture) {
-        profilePicture = `/uploads/profiles/${req.files.profilePicture[0].filename}`;
-      }
-      if (req.files.idCardFrontPic) {
-        idCardFrontPic = `/uploads/documents/${req.files.idCardFrontPic[0].filename}`;
-      }
-      if (req.files.idCardBackPic) {
-        idCardBackPic = `/uploads/documents/${req.files.idCardBackPic[0].filename}`;
-      }
+      if (req.files.profilePicture) profilePicture = `/uploads/profiles/${req.files.profilePicture[0].filename}`;
+      if (req.files.idCardFrontPic) idCardFrontPic = `/uploads/documents/${req.files.idCardFrontPic[0].filename}`;
+      if (req.files.idCardBackPic) idCardBackPic = `/uploads/documents/${req.files.idCardBackPic[0].filename}`;
     }
 
-    // Validate required ID card pictures
     if (!idCardFrontPic || !idCardBackPic) {
+      await t.rollback();
       return res.status(400).json({
         success: false,
         message: 'Both ID card front and back pictures are required'
       });
     }
 
-    // Create new user
+    // Create user inside transaction
     const user = await User.create({
       firstName,
       lastName,
@@ -106,12 +93,9 @@ const register = async (req, res) => {
       role: role || 'internee',
       teamLeadId: role === 'internee' ? teamLeadId : null,
       profilePicture
-    });
+    }, { transaction: t });
 
-    // Generate token
-    const token = generateToken(user.id);
-
-    // Return user data without password
+    // Prepare user data
     const userData = {
       id: user.id,
       firstName: user.firstName,
@@ -123,6 +107,33 @@ const register = async (req, res) => {
       isActive: user.isActive
     };
 
+    // Generate token
+    const token = generateToken(user.id);
+
+    // Prepare email message
+    const message = `Your login credentials are:\nEmail: ${email}\nPassword: ${password}\n\nPlease log in and change your password as soon as possible.`;
+
+    // Send email (await here so failure can rollback)
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: `Welcome to the Team, ${firstName}!`,
+        message
+      });
+    } catch (emailError) {
+      console.error("Email sending failed:", emailError);
+      await t.rollback(); // rollback user creation
+      return res.status(500).json({
+        success: false,
+        message: 'User registration failed because email could not be sent',
+        error: emailError.message
+      });
+    }
+
+    // Commit transaction after successful email
+    await t.commit();
+
+    // Send success response
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
@@ -131,15 +142,17 @@ const register = async (req, res) => {
         token
       }
     });
+
   } catch (error) {
-    console.error('Registration error:', error);
+    await t.rollback();
     res.status(500).json({
       success: false,
-      message: 'Registration failed',
+      message: error.message || 'Registration failed',
       error: error.message
     });
   }
 };
+
 
 // Login user
 const login = async (req, res) => {
