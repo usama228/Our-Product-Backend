@@ -208,6 +208,7 @@ const login = async (req, res) => {
       email: user.email,
       role: user.role,
       profilePicture: user.profilePicture,
+      coverPhoto: user.coverPhoto,
       teamLeadId: user.teamLeadId,
       teamLead: user.teamLead,
       isActive: user.isActive
