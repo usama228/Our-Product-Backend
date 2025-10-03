@@ -10,7 +10,7 @@ const options = {
     },
     servers: [
       {
-        url: "http://localhost:5000",
+        url: "http://localhost:5000/api",
         description: "Development server",
       },
     ],
@@ -21,13 +21,67 @@ const options = {
       },
       {
         name: "Users",
-        description: "User management operations (Admin only)"
+        description: "User management operations"
       },
       {
         name: "Tasks",
         description: "Task management and assignment operations"
+      },
+      {
+        name: "Notifications",
+        description: "User notification management"
       }
     ],
+    paths: {
+      "/api/auth/login": {
+        post: {
+          tags: ["Authentication"],
+          summary: "User login",
+          description: "Authenticate user with email and password",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["email", "password"],
+                  properties: {
+                    email: {
+                      type: "string",
+                      format: "email",
+                      example: "user@example.com"
+                    },
+                    password: {
+                      type: "string",
+                      example: "password123"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: "Login successful",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      message: { type: "string" },
+                      token: { type: "string" },
+                      user: { $ref: "#/components/schemas/User" }
+                    }
+                  }
+                }
+              }
+            },
+            401: { description: "Invalid credentials" },
+            500: { description: "Server error" }
+          }
+        }
+      }
+    },
     components: {
       securitySchemes: {
         bearerAuth: {
@@ -47,14 +101,10 @@ const options = {
             firstName: { 
               type: "string",
               description: "User's first name",
-              minLength: 2,
-              maxLength: 50
             },
             lastName: { 
               type: "string",
               description: "User's last name",
-              minLength: 2,
-              maxLength: 50
             },
             email: { 
               type: "string", 
@@ -63,15 +113,11 @@ const options = {
             },
             phone: { 
               type: "string",
-              description: "Phone number (10-15 digits)",
-              minLength: 10,
-              maxLength: 15
+              description: "Phone number",
             },
             idCardNumber: { 
               type: "string",
               description: "Unique ID card number",
-              minLength: 5,
-              maxLength: 20
             },
             idCardFrontPic: { 
               type: "string",
@@ -88,7 +134,11 @@ const options = {
             },
             profilePicture: { 
               type: "string",
-              description: "Path to profile picture (optional)"
+              description: "Path to profile picture"
+            },
+            coverPhoto: {
+              type: "string",
+              description: "Path to cover photo"
             },
             teamLeadId: { 
               type: "integer",
@@ -97,7 +147,6 @@ const options = {
             isActive: { 
               type: "boolean",
               description: "User account status",
-              default: true
             },
             createdAt: { 
               type: "string", 
@@ -109,8 +158,7 @@ const options = {
               format: "date-time",
               description: "Last update timestamp"
             },
-          },
-          required: ["id", "firstName", "lastName", "email", "phone", "idCardNumber", "idCardFrontPic", "idCardBackPic", "role"]
+          }
         },
         Task: {
           type: "object",
@@ -133,9 +181,17 @@ const options = {
             submissionNotes: { type: "string" },
             submittedAt: { type: "string", format: "date-time" },
             feedback: { type: "string" },
-            createdAt: { type: "string", format: "date-time" },
-            updatedAt: { type: "string", format: "date-time" },
           },
+        },
+        Notification: {
+            type: "object",
+            properties: {
+                id: { type: "integer" },
+                sender: { type: "integer" },
+                recipient: { type: "integer" },
+                message: { type: "string" },
+                isRead: {type: "boolean" }
+            }
         },
         AuthResponse: {
           type: "object",
@@ -159,195 +215,49 @@ const options = {
             error: { type: "string" },
           },
         },
-        UserRegistrationRequest: {
-          type: "object",
-          properties: {
-            firstName: { 
-              type: "string",
-              minLength: 2,
-              maxLength: 50,
-              example: "John"
-            },
-            lastName: { 
-              type: "string",
-              minLength: 2,
-              maxLength: 50,
-              example: "Doe"
-            },
-            email: { 
-              type: "string", 
-              format: "email",
-              example: "john.doe@company.com"
-            },
-            password: { 
-              type: "string", 
-              minLength: 6,
-              example: "password123"
-            },
-            phone: {
-              type: "string",
-              pattern: "^[\\+]?[1-9][\\d]{0,15}$",
-              example: "03001234567"
-            },
-            idCardNumber: {
-              type: "string",
-              minLength: 5,
-              maxLength: 20,
-              example: "12345-6789012-3"
-            },
-            role: {
-              type: "string",
-              enum: ["admin", "team_lead", "employee", "internee"],
-              example: "internee"
-            },
-            teamLeadId: { 
-              type: "integer",
-              example: 2
-            }
-          },
-          required: ["firstName", "lastName", "email", "password", "phone", "idCardNumber", "role"]
-        },
-        UserStatusUpdate: {
-          type: "object",
-          properties: {
-            isActive: { 
-              type: "boolean",
-              description: "User active status",
-              example: true
-            }
-          },
-          required: ["isActive"]
-        },
-        UserRoleUpdate: {
-          type: "object",
-          properties: {
-            role: {
-              type: "string",
-              enum: ["admin", "team_lead", "employee", "internee"],
-              description: "New user role",
-              example: "employee"
-            },
-            teamLeadId: {
-              type: "integer",
-              description: "Team lead ID (required for internees)",
-              example: 2
-            }
-          },
-          required: ["role"]
-        },
       },
     },
     paths: {
-      "/api/auth/register": {
+      "/auth/register": {
         post: {
           tags: ["Authentication"],
-          summary: "Register a new user (Admin only)",
-          description: "Create a new user account. Only admins can register new users. Requires phone number and ID card photos.",
+          summary: "Register a new user",
+          description: "Admin-only endpoint to create a new user.",
           security: [{ bearerAuth: [] }],
           requestBody: {
-            required: true,
             content: {
               "multipart/form-data": {
                 schema: {
                   type: "object",
                   properties: {
-                    firstName: { 
-                      type: "string",
-                      description: "User's first name",
-                      minLength: 2,
-                      maxLength: 50
-                    },
-                    lastName: { 
-                      type: "string",
-                      description: "User's last name",
-                      minLength: 2,
-                      maxLength: 50
-                    },
-                    email: { 
-                      type: "string", 
-                      format: "email",
-                      description: "Unique email address"
-                    },
-                    password: { 
-                      type: "string", 
-                      minLength: 6,
-                      description: "Password (minimum 6 characters)"
-                    },
-                    phone: {
-                      type: "string",
-                      description: "Phone number (10-15 digits)",
-                      pattern: "^[\\+]?[1-9][\\d]{0,15}$"
-                    },
-                    idCardNumber: {
-                      type: "string",
-                      description: "Unique ID card number",
-                      minLength: 5,
-                      maxLength: 20
-                    },
-                    role: {
-                      type: "string",
-                      enum: ["admin", "team_lead", "employee", "internee"],
-                      description: "User role in the system (required)"
-                    },
-                    teamLeadId: { 
-                      type: "integer",
-                      description: "Team lead ID (required for internees)"
-                    },
-                    profilePicture: { 
-                      type: "string", 
-                      format: "binary",
-                      description: "Optional profile picture"
-                    },
-                    idCardFrontPic: {
-                      type: "string",
-                      format: "binary",
-                      description: "ID card front picture (required)"
-                    },
-                    idCardBackPic: {
-                      type: "string",
-                      format: "binary",
-                      description: "ID card back picture (required)"
-                    }
+                    firstName: { type: "string" },
+                    lastName: { type: "string" },
+                    email: { type: "string", format: "email" },
+                    password: { type: "string", minLength: 6 },
+                    phone: { type: "string" },
+                    idCardNumber: { type: "string" },
+                    role: { type: "string", enum: ["admin", "team_lead", "employee", "internee"]},
+                    teamLeadId: { type: "integer" },
+                    profilePicture: { type: "string", format: "binary"},
+                    idCardFrontPic: { type: "string", format: "binary"},
+                    idCardBackPic: { type: "string", format: "binary"}
                   },
-                  required: ["firstName", "lastName", "email", "password", "phone", "idCardNumber", "role", "idCardFrontPic", "idCardBackPic"],
                 },
               },
             },
           },
           responses: {
-            201: {
-              description: "User registered successfully",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/AuthResponse" },
-                },
-              },
-            },
-            400: {
-              description: "Bad request - validation errors",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
-            403: {
-              description: "Access denied - Admin only",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
+            201: { description: "User registered successfully" },
+            400: { description: "Bad request" },
+            403: { description: "Forbidden" }
           },
         },
       },
-      "/api/auth/login": {
+      "/auth/login": {
         post: {
           tags: ["Authentication"],
           summary: "Login user",
           requestBody: {
-            required: true,
             content: {
               "application/json": {
                 schema: {
@@ -362,56 +272,23 @@ const options = {
             },
           },
           responses: {
-            200: {
-              description: "Login successful",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/AuthResponse" },
-                },
-              },
-            },
-            401: {
-              description: "Invalid credentials",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
+            200: { description: "Login successful"},
+            401: { description: "Invalid credentials" },
           },
         },
       },
-      "/api/auth/profile": {
+      "/auth/profile": {
         get: {
           tags: ["Authentication"],
           summary: "Get current user profile",
           security: [{ bearerAuth: [] }],
           responses: {
-            200: {
-              description: "Profile retrieved successfully",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean" },
-                      data: {
-                        type: "object",
-                        properties: {
-                          user: { $ref: "#/components/schemas/User" },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
+            200: { description: "Profile retrieved successfully" },
           },
         },
         put: {
           tags: ["Authentication"],
           summary: "Update user profile",
-          description: "Update personal information including name, phone, profile picture, and ID card photos",
           security: [{ bearerAuth: [] }],
           requestBody: {
             content: {
@@ -419,98 +296,37 @@ const options = {
                 schema: {
                   type: "object",
                   properties: {
-                    firstName: { 
-                      type: "string",
-                      description: "Updated first name",
-                      minLength: 2,
-                      maxLength: 50
-                    },
-                    lastName: { 
-                      type: "string",
-                      description: "Updated last name",
-                      minLength: 2,
-                      maxLength: 50
-                    },
-                    phone: {
-                      type: "string",
-                      description: "Updated phone number",
-                      pattern: "^[\\+]?[1-9][\\d]{0,15}$"
-                    },
-                    profilePicture: { 
-                      type: "string", 
-                      format: "binary",
-                      description: "New profile picture"
-                    },
-                    idCardFrontPic: {
-                      type: "string",
-                      format: "binary",
-                      description: "Updated ID card front picture"
-                    },
-                    idCardBackPic: {
-                      type: "string",
-                      format: "binary",
-                      description: "Updated ID card back picture"
-                    }
+                    firstName: { type: "string" },
+                    lastName: { type: "string" },
+                    phone: { type: "string" },
+                    profilePicture: { type: "string", format: "binary"},
+                    coverPhoto: { type: "string", format: "binary"},
+                    idCardFrontPic: { type: "string", format: "binary"},
+                    idCardBackPic: { type: "string", format: "binary"}
                   },
                 },
               },
             },
           },
           responses: {
-            200: {
-              description: "Profile updated successfully",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean", example: true },
-                      message: { type: "string", example: "Profile updated successfully" },
-                      data: {
-                        type: "object",
-                        properties: {
-                          user: { $ref: "#/components/schemas/User" },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            400: {
-              description: "Bad request - validation errors",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
+            200: { description: "Profile updated successfully" },
+            400: { description: "Bad request" },
           },
         },
       },
-      "/api/auth/change-password": {
+      "/auth/change-password": {
         put: {
           tags: ["Authentication"],
           summary: "Change user password",
-          description: "Change the current user's password by providing current and new password",
           security: [{ bearerAuth: [] }],
           requestBody: {
-            required: true,
             content: {
               "application/json": {
                 schema: {
                   type: "object",
                   properties: {
-                    currentPassword: {
-                      type: "string",
-                      description: "Current password for verification",
-                      minLength: 6
-                    },
-                    newPassword: {
-                      type: "string",
-                      description: "New password (minimum 6 characters)",
-                      minLength: 6
-                    }
+                    currentPassword: { type: "string", minLength: 6 },
+                    newPassword: { type: "string", minLength: 6 }
                   },
                   required: ["currentPassword", "newPassword"]
                 },
@@ -518,257 +334,210 @@ const options = {
             },
           },
           responses: {
-            200: {
-              description: "Password changed successfully",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean", example: true },
-                      message: { type: "string", example: "Password changed successfully" }
-                    },
-                  },
-                },
-              },
-            },
-            400: {
-              description: "Bad request - current password incorrect or validation errors",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
-            404: {
-              description: "User not found",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
+            200: { description: "Password changed successfully" },
+            400: { description: "Bad request" },
           },
         },
       },
-      "/api/users": {
-        get: {
-          tags: ["Users"],
-          summary: "Get all users (Admin only)",
-          security: [{ bearerAuth: [] }],
-          responses: {
-            200: {
-              description: "Users retrieved successfully",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean" },
-                      data: {
-                        type: "object",
-                        properties: {
-                          users: {
-                            type: "array",
-                            items: { $ref: "#/components/schemas/User" },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      "/api/users/dashboard-stats": {
-        get: {
-          tags: ["Users"],
-          summary: "Get dashboard statistics",
-          security: [{ bearerAuth: [] }],
-          responses: {
-            200: {
-              description: "Dashboard stats retrieved successfully",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean" },
-                      data: {
-                        type: "object",
-                        properties: {
-                          stats: {
-                            type: "object",
-                            properties: {
-                              totalUsers: { type: "integer" },
-                              totalInternees: { type: "integer" },
-                              totalTeamLeads: { type: "integer" },
-                              totalEmployees: { type: "integer" },
-                              activeUsers: { type: "integer" },
-                              totalTasks: { type: "integer" },
-                              assignedTasks: { type: "integer" },
-                              submittedTasks: { type: "integer" },
-                              acceptedTasks: { type: "integer" },
-                              rejectedTasks: { type: "integer" },
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      "/api/users/team-leads": {
-        get: {
-          tags: ["Users"],
-          summary: "Get all team leads",
-          description: "Retrieve a list of all users with team_lead role. Used for assignment dropdowns.",
-          security: [{ bearerAuth: [] }],
-          responses: {
-            200: {
-              description: "Team leads retrieved successfully",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean", example: true },
-                      data: {
-                        type: "object",
-                        properties: {
-                          teamLeads: {
-                            type: "array",
-                            items: {
-                              type: "object",
-                              properties: {
-                                id: { type: "integer", example: 2 },
-                                firstName: { type: "string", example: "Rahimeen" },
-                                lastName: { type: "string", example: "Altaf" },
-                                email: { type: "string", example: "rahimeen.altaf@company.com" }
-                              }
-                            }
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            401: {
-              description: "Authentication required",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
-          },
-        },
-      },
-      "/api/users/internees": {
-        get: {
-          tags: ["Users"],
-          summary: "Get all internees (Team Lead+ only)",
-          security: [{ bearerAuth: [] }],
-          responses: {
-            200: {
-              description: "Internees retrieved successfully",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean" },
-                      data: {
-                        type: "object",
-                        properties: {
-                          internees: {
-                            type: "array",
-                            items: { $ref: "#/components/schemas/User" },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      "/api/users/internees/{teamLeadId}": {
-        get: {
-          tags: ["Users"],
-          summary: "Get internees by team lead (Team Lead+ only)",
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: "teamLeadId",
-              in: "path",
-              required: true,
-              schema: { type: "integer" },
-              description: "Team lead ID to filter internees"
-            },
-          ],
-          responses: {
-            200: {
-              description: "Internees retrieved successfully",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean" },
-                      data: {
-                        type: "object",
-                        properties: {
-                          internees: {
-                            type: "array",
-                            items: { $ref: "#/components/schemas/User" },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      "/api/users/{userId}/status": {
+       "/auth/admin/change-password": {
         put: {
-          tags: ["Users"],
-          summary: "Update user status (Admin only)",
-          description: "Activate or deactivate a user account",
+          tags: ["Authentication"],
+          summary: "Admin change user password",
+          description: "Admin or team lead can change a user's password.",
           security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: "userId",
-              in: "path",
-              required: true,
-              schema: { type: "integer" },
-              description: "User ID to update"
-            },
-          ],
           requestBody: {
-            required: true,
             content: {
               "application/json": {
                 schema: {
                   type: "object",
                   properties: {
-                    isActive: { 
-                      type: "boolean",
-                      description: "User active status"
+                    userId: { type: "integer" },
+                    newPassword: { type: "string", minLength: 6 }
+                  },
+                  required: ["userId", "newPassword"]
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: "Password changed successfully" },
+            400: { description: "Bad request" },
+            403: { description: "Forbidden" },
+            404: { description: "User not found"}
+          },
+        },
+      },
+      "/users": {
+        get: {
+          tags: ["Users"],
+          summary: "Get all users",
+          description: "Admin or team lead can get all users. Team lead can only see their internees.",
+          security: [{ bearerAuth: [] }],
+           parameters: [
+            { name: "page", in: "query", schema: { type: "integer" } },
+            { name: "limit", in: "query", schema: { type: "integer" } },
+            { name: "search", in: "query", schema: { type: "string" } },
+            { name: "role", in: "query", schema: { type: "string" } },
+            { name: "status", in: "query", schema: { type: "string" } },
+          ],
+          responses: {
+            200: { description: "Users retrieved successfully" },
+          },
+        },
+        post: {
+            tags: ["Users"],
+            summary: "Create a new user",
+            description: "Admin-only endpoint to create a new user. Same as /auth/register.",
+            security: [{ bearerAuth: [] }],
+            requestBody: {
+              content: {
+                "multipart/form-data": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      firstName: { type: "string" },
+                      lastName: { type: "string" },
+                      email: { type: "string", format: "email" },
+                      password: { type: "string", minLength: 6 },
+                      phone: { type: "string" },
+                      idCardNumber: { type: "string" },
+                      role: { type: "string", enum: ["admin", "team_lead", "employee", "internee"]},
+                      teamLeadId: { type: "integer" },
+                      profilePicture: { type: "string", format: "binary"},
+                      idCardFrontPic: { type: "string", format: "binary"},
+                      idCardBackPic: { type: "string", format: "binary"}
                     },
+                  },
+                },
+              },
+            },
+            responses: {
+              201: { description: "User created successfully" },
+              400: { description: "Bad request" },
+              403: { description: "Forbidden" }
+            },
+        }
+      },
+      "/users/dashboard": {
+          get: {
+              tags: ["Users"],
+              summary: "Get dashboard stats",
+              security: [{ bearerAuth: [] }],
+              responses: {
+                  200: { description: "Stats retrieved successfully"}
+              }
+          }
+      },
+      "/users/team-leads": {
+        get: {
+            tags: ["Users"],
+            summary: "Get all team leads",
+            description: "Admin-only endpoint to get all team leads.",
+            security: [{ bearerAuth: [] }],
+            responses: {
+                200: { description: "Team leads retrieved successfully"}
+            }
+        }
+      },
+      "/users/internees": {
+        get: {
+            tags: ["Users"],
+            summary: "Get all internees",
+            description: "Admin and team leads can get internees. Admins see all, team leads see their own.",
+            security: [{ bearerAuth: [] }],
+            responses: {
+                200: { description: "Internees retrieved successfully"}
+            }
+        }
+      },
+       "/users/internees/{teamLeadId}": {
+        get: {
+            tags: ["Users"],
+            summary: "Get internees by team lead",
+            security: [{ bearerAuth: [] }],
+            parameters: [
+                { name: "teamLeadId", in: "path", required: true, schema: { type: "integer" } }
+            ],
+            responses: {
+                200: { description: "Internees retrieved successfully"}
+            }
+        }
+      },
+      "/users/{userId}": {
+        get: {
+          tags: ["Users"],
+          summary: "Get user by ID",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: "userId", in: "path", required: true, schema: { type: "integer" } },
+          ],
+          responses: {
+            200: { description: "User retrieved successfully" },
+            404: { description: "User not found" },
+          },
+        },
+        put: {
+          tags: ["Users"],
+          summary: "Update a user's profile",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: "userId", in: "path", required: true, schema: { type: "integer" } },
+          ],
+          requestBody: {
+            content: {
+              "multipart/form-data": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    firstName: { type: "string" },
+                    lastName: { type: "string" },
+                    phone: { type: "string" },
+                    idCardNumber: { type: "string" },
+                    password: { type: "string" },
+                    profilePicture: { type: "string", format: "binary" },
+                    coverPhoto: { type: "string", format: "binary" },
+                    idCardFrontPic: { type: "string", format: "binary" },
+                    idCardBackPic: { type: "string", format: "binary" }
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: "User profile updated successfully" },
+            404: { description: "User not found" },
+          },
+        },
+        delete: {
+          tags: ["Users"],
+          summary: "Delete a user",
+          description: "Admin-only endpoint to delete a user.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: "userId", in: "path", required: true, schema: { type: "integer" } },
+          ],
+          responses: {
+            200: { description: "User deleted successfully" },
+            404: { description: "User not found" },
+          },
+        }
+      },
+      "/users/{userId}/status": {
+        put: {
+          tags: ["Users"],
+          summary: "Update user status",
+          description: "Admin-only endpoint to activate or deactivate a user.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: "userId", in: "path", required: true, schema: { type: "integer" } },
+          ],
+          requestBody: {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    isActive: { type: "boolean" },
                   },
                   required: ["isActive"],
                 },
@@ -776,76 +545,27 @@ const options = {
             },
           },
           responses: {
-            200: {
-              description: "User status updated successfully",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean" },
-                      message: { type: "string" },
-                      data: {
-                        type: "object",
-                        properties: {
-                          user: { $ref: "#/components/schemas/User" },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            404: {
-              description: "User not found",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
-            403: {
-              description: "Access denied - Admin only",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
+            200: { description: "User status updated successfully" },
           },
         },
       },
-      "/api/users/{userId}/role": {
+      "/users/{userId}/role": {
         put: {
           tags: ["Users"],
-          summary: "Update user role (Admin only)",
-          description: "Change user role and team assignment",
+          summary: "Update user role",
+          description: "Admin-only endpoint to change a user's role.",
           security: [{ bearerAuth: [] }],
           parameters: [
-            {
-              name: "userId",
-              in: "path",
-              required: true,
-              schema: { type: "integer" },
-              description: "User ID to update"
-            },
+            { name: "userId", in: "path", required: true, schema: { type: "integer" } },
           ],
           requestBody: {
-            required: true,
             content: {
               "application/json": {
                 schema: {
                   type: "object",
                   properties: {
-                    role: {
-                      type: "string",
-                      enum: ["admin", "team_lead", "employee", "internee"],
-                      description: "New user role"
-                    },
-                    teamLeadId: {
-                      type: "integer",
-                      description: "Team lead ID (required for internees)"
-                    },
+                    role: { type: "string", enum: ["admin", "team_lead", "employee", "internee"] },
+                    teamLeadId: { type: "integer" },
                   },
                   required: ["role"],
                 },
@@ -853,78 +573,17 @@ const options = {
             },
           },
           responses: {
-            200: {
-              description: "User role updated successfully",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean" },
-                      message: { type: "string" },
-                      data: {
-                        type: "object",
-                        properties: {
-                          user: { $ref: "#/components/schemas/User" },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            400: {
-              description: "Invalid role or team lead assignment",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
-            404: {
-              description: "User not found",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
-            403: {
-              description: "Access denied - Admin only",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
+            200: { description: "User role updated successfully" },
           },
         },
       },
-      "/api/tasks": {
-        get: {
-          tags: ["Tasks"],
-          summary: "Get all tasks (Team Lead+ only)",
-          security: [{ bearerAuth: [] }],
-          responses: {
-            200: {
-              description: "Tasks retrieved successfully",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "array",
-                    items: { $ref: "#/components/schemas/Task" },
-                  },
-                },
-              },
-            },
-          },
-        },
+      "/tasks": {
         post: {
           tags: ["Tasks"],
-          summary: "Create a new task (Admin only)",
+          summary: "Create a new task",
+          description: "Admin or team lead can create a new task.",
           security: [{ bearerAuth: [] }],
           requestBody: {
-            required: true,
             content: {
               "application/json": {
                 schema: {
@@ -934,102 +593,95 @@ const options = {
                     description: { type: "string" },
                     assigneeId: { type: "integer" },
                     dueDate: { type: "string", format: "date-time" },
-                    priority: {
-                      type: "string",
-                      enum: ["low", "medium", "high", "urgent"],
-                      default: "medium",
-                    },
+                    priority: { type: "string", enum: ["low", "medium", "high", "urgent"] },
                   },
-                  required: ["title", "description", "assigneeId"],
+                  required: ["title", "description", "assigneeId", "dueDate"],
                 },
               },
             },
           },
           responses: {
-            201: {
-              description: "Task created successfully",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Task" },
-                },
-              },
+            201: { description: "Task created successfully" },
+          },
+        },
+        get: {
+            tags: ["Tasks"],
+            summary: "Get all tasks",
+            description: "Retrieves tasks based on user role.",
+            security: [{ bearerAuth: [] }],
+             parameters: [
+              { name: "page", in: "query", schema: { type: "integer" } },
+              { name: "limit", in: "query", schema: { type: "integer" } },
+              { name: "search", in: "query", schema: { type: "string" } },
+              { name: "status", in: "query", schema: { type: "string" } },
+              { name: "priority", in: "query", schema: { type: "string" } },
+            ],
+            responses: {
+              200: { description: "Tasks retrieved successfully" },
             },
+          }
+      },
+       "/tasks/my-tasks": {
+        get: {
+          tags: ["Tasks"],
+          summary: "Get my tasks",
+          description: "Get tasks assigned to the logged-in user.",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: "page", in: "query", schema: { type: "integer" } },
+            { name: "limit", in: "query", schema: { type: "integer" } },
+            { name: "search", in: "query", schema: { type: "string" } },
+            { name: "status", in: "query", schema: { type: "string" } },
+            { name: "priority", in: "query", schema: { type: "string" } },
+          ],
+          responses: {
+            200: { description: "Tasks retrieved successfully" },
           },
         },
       },
-      "/api/tasks/{id}": {
+      "/tasks/{id}": {
         get: {
           tags: ["Tasks"],
           summary: "Get task by ID",
           security: [{ bearerAuth: [] }],
           parameters: [
-            {
-              name: "id",
-              in: "path",
-              required: true,
-              schema: { type: "integer" },
-            },
+            { name: "id", in: "path", required: true, schema: { type: "integer" } },
           ],
           responses: {
-            200: {
-              description: "Task retrieved successfully",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Task" },
-                },
-              },
-            },
-            404: {
-              description: "Task not found",
-            },
+            200: { description: "Task retrieved successfully" },
+            404: { description: "Task not found" },
           },
         },
         delete: {
           tags: ["Tasks"],
-          summary: "Delete task (Admin only)",
+          summary: "Delete a task",
+          description: "Admin-only endpoint to delete a task.",
           security: [{ bearerAuth: [] }],
           parameters: [
-            {
-              name: "id",
-              in: "path",
-              required: true,
-              schema: { type: "integer" },
-            },
+            { name: "id", in: "path", required: true, schema: { type: "integer" } },
           ],
           responses: {
-            200: {
-              description: "Task deleted successfully",
-            },
-            404: {
-              description: "Task not found",
-            },
+            200: { description: "Task deleted successfully" },
+            404: { description: "Task not found" },
           },
         },
       },
-      "/api/tasks/{id}/status": {
+      "/tasks/{id}/status": {
         patch: {
           tags: ["Tasks"],
-          summary: "Update task status (Team Lead+ only)",
+          summary: "Update task status",
+          description: "Admin or team lead can update a task's status.",
           security: [{ bearerAuth: [] }],
           parameters: [
-            {
-              name: "id",
-              in: "path",
-              required: true,
-              schema: { type: "integer" },
-            },
+            { name: "id", in: "path", required: true, schema: { type: "integer" } },
           ],
           requestBody: {
-            required: true,
             content: {
               "application/json": {
                 schema: {
                   type: "object",
                   properties: {
-                    status: {
-                      type: "string",
-                      enum: ["assigned", "submitted", "accepted", "rejected"],
-                    },
+                    status: { type: "string", enum: ["assigned", "submitted", "accepted", "rejected"] },
                   },
                   required: ["status"],
                 },
@@ -1037,24 +689,18 @@ const options = {
             },
           },
           responses: {
-            200: {
-              description: "Task status updated successfully",
-            },
+            200: { description: "Task status updated successfully" },
           },
         },
       },
-      "/api/tasks/{id}/submit": {
+      "/tasks/{id}/submit": {
         post: {
           tags: ["Tasks"],
-          summary: "Submit task (Internee only)",
+          summary: "Submit a task",
+          description: "Employee or internee can submit a task.",
           security: [{ bearerAuth: [] }],
           parameters: [
-            {
-              name: "id",
-              in: "path",
-              required: true,
-              schema: { type: "integer" },
-            },
+            { name: "id", in: "path", required: true, schema: { type: "integer" } },
           ],
           requestBody: {
             content: {
@@ -1070,27 +716,19 @@ const options = {
             },
           },
           responses: {
-            200: {
-              description: "Task submitted successfully",
-            },
-            403: {
-              description: "You can only submit your own tasks",
-            },
+            200: { description: "Task submitted successfully" },
+            403: { description: "Forbidden" },
           },
         },
       },
-      "/api/tasks/{id}/accept": {
+      "/tasks/{id}/accept": {
         post: {
           tags: ["Tasks"],
-          summary: "Accept submitted task (Admin only)",
+          summary: "Accept a task",
+          description: "Admin or team lead can accept a submitted task.",
           security: [{ bearerAuth: [] }],
           parameters: [
-            {
-              name: "id",
-              in: "path",
-              required: true,
-              schema: { type: "integer" },
-            },
+            { name: "id", in: "path", required: true, schema: { type: "integer" } },
           ],
           requestBody: {
             content: {
@@ -1105,27 +743,19 @@ const options = {
             },
           },
           responses: {
-            200: {
-              description: "Task accepted successfully",
-            },
-            400: {
-              description: "Task must be submitted before it can be accepted",
-            },
+            200: { description: "Task accepted successfully" },
+            400: { description: "Bad request" },
           },
         },
       },
-      "/api/tasks/{id}/reject": {
+      "/tasks/{id}/reject": {
         post: {
           tags: ["Tasks"],
-          summary: "Reject submitted task (Admin only)",
+          summary: "Reject a task",
+          description: "Admin or team lead can reject a submitted task.",
           security: [{ bearerAuth: [] }],
           parameters: [
-            {
-              name: "id",
-              in: "path",
-              required: true,
-              schema: { type: "integer" },
-            },
+            { name: "id", in: "path", required: true, schema: { type: "integer" } },
           ],
           requestBody: {
             content: {
@@ -1140,18 +770,49 @@ const options = {
             },
           },
           responses: {
-            200: {
-              description: "Task rejected successfully",
-            },
-            400: {
-              description: "Task must be submitted before it can be rejected",
-            },
+            200: { description: "Task rejected successfully" },
+            400: { description: "Bad request" },
           },
         },
       },
+      "/notifications": {
+        get: {
+          tags: ["Notifications"],
+          summary: "Get all notifications",
+          description: "Get all notifications for the logged-in user.",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: "Notifications retrieved successfully" },
+          },
+        },
+      },
+      "/notifications/{id}/read": {
+        put: {
+          tags: ["Notifications"],
+          summary: "Mark a notification as read",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: "id", in: "path", required: true, schema: { type: "integer" } },
+          ],
+          responses: {
+            200: { description: "Notification marked as read" },
+            404: { description: "Notification not found" }
+          },
+        },
+      },
+      "/notifications/read-all": {
+        put: {
+          tags: ["Notifications"],
+          summary: "Mark all notifications as read",
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: "All notifications marked as read" },
+          },
+        },
+      }
     },
   },
-  apis: ["./routes/*.js", "./app.js"],
+  apis: ["./routes/*.js"],
 };
 
 const swaggerSpec = swaggerJSDoc(options);
