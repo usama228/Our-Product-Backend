@@ -1,5 +1,6 @@
 
 const { User, Task } = require("../models");
+const { createNotification } = require('../services/notificationService');
 const { Op } = require("sequelize");
 
 // Get all users (Admin or Team Lead)
@@ -58,6 +59,7 @@ const getAllUsers = async (req, res) => {
         "isActive",
         "createdAt",
         "profilePicture",
+        "coverPhoto",
       ],
       include: [
         {
@@ -116,6 +118,7 @@ const getUserById = async (req, res) => {
         "phone",
         "idCardNumber",
         "profilePicture",
+        "coverPhoto",
         "idCardFrontPic",
         "idCardBackPic",
         "role",
@@ -174,6 +177,9 @@ const updateUser = async (req, res) => {
         if (req.files) {
             if (req.files.profilePicture) {
                 updateData.profilePicture = '/uploads/profiles/' + req.files.profilePicture[0].filename;
+            }
+            if (req.files.coverPhoto) {
+                updateData.coverPhoto = '/uploads/profiles/' + req.files.coverPhoto[0].filename;
             }
             if (req.files.idCardFrontPic) {
                 updateData.idCardFrontPic = '/uploads/documents/' + req.files.idCardFrontPic[0].filename;
@@ -300,7 +306,22 @@ const updateUserRole = async (req, res) => {
       updateData.teamLeadId = null;
     }
 
-    await User.update(updateData, { where: { id: userId } });
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    await user.update(updateData);
+
+    // Send notification to the user
+    const message = `Your role has been updated to ${role}.`;
+    await createNotification(req.user.id, userId, message, `profile`);
+
+    // If assigned to a team lead, notify them
+    if (role === "internee" && teamLeadId) {
+      const messageForTeamLead = `${user.firstName} ${user.lastName} has been assigned as your internee.`;
+      await createNotification(req.user.id, teamLeadId, messageForTeamLead, `user-profile/${userId}`);
+    }
 
     res.json({
       success: true,
@@ -336,22 +357,26 @@ const getDashboardStats = async (req, res) => {
                 ]);
                 stats = { totalUsers, totalInternees, totalTeamLeads, totalEmployees, totalTasks, pendingTasks, completedTasks, rejectedTasks };
                 break;
-            }
-            case 'team_lead': {
+              }
+              case 'team_lead': {
                 const myInternees = await User.findAll({ 
                     where: { role: 'internee', teamLeadId: user.id },
                     attributes: ['id']
                 });
                 const interneeIds = myInternees.map(i => i.id);
 
-                const [totalInternees, activeInternees, totalTasks, pendingTasks] = await Promise.all([
-                    User.count({ where: { id: { [Op.in]: interneeIds } } }),
-                    User.count({ where: { id: { [Op.in]: interneeIds }, isActive: true } }),
-                    Task.count({ where: { assigneeId: { [Op.in]: interneeIds } } }),
-                    Task.count({ where: { assigneeId: { [Op.in]: interneeIds }, status: 'submitted' } })
-                ]);
-                stats = { totalInternees, activeInternees, totalTasks, pendingTasks };
-                break;
+                if (interneeIds.length === 0) {
+                    stats = { totalInternees: 0, activeInternees: 0, totalTasks: 0, pendingTasks: 0 };
+                  } else {
+                    const [totalInternees, activeInternees, totalTasks, pendingTasks] = await Promise.all([
+                      User.count({ where: { id: { [Op.in]: interneeIds } } }),
+                      User.count({ where: { id: { [Op.in]: interneeIds }, isActive: true } }),
+                      Task.count({ where: { assigneeId: { [Op.in]: interneeIds } } }),
+                      Task.count({ where: { assigneeId: { [Op.in]: interneeIds }, status: 'submitted' } })
+                    ]);
+                    stats = { totalInternees, activeInternees, totalTasks, pendingTasks };
+                  }
+                  break;
             }
             case 'employee':
             case 'internee': {
@@ -365,6 +390,7 @@ const getDashboardStats = async (req, res) => {
                 break;
             }
         }
+
 
         res.json({
             success: true,

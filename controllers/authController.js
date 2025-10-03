@@ -1,7 +1,9 @@
+
 const jwt = require('jsonwebtoken');
 const { User } = require('../models');
 const sendEmail = require('../utils/sendEmail');
 const { sequelize } = require('../models');
+const { createBulkNotifications, createNotification } = require('../services/notificationService');
 
 const generateToken = (userId) => {
  return jwt.sign({ userId }, process.env.JWT_SECRET, {
@@ -95,6 +97,23 @@ const register = async (req, res) => {
       profilePicture
     }, { transaction: t });
 
+    // Notification logic
+    const admins = await User.findAll({ where: { role: 'admin' }, attributes: ['id'] });
+    const adminIds = admins.map(admin => admin.id).filter(id => id !== user.id); // Exclude self
+
+    if (adminIds.length > 0) {
+      const message = `New user created: ${user.firstName} ${user.lastName} (${user.email}).`;
+      await createBulkNotifications(user.id, adminIds, message, t);
+    }
+
+    if (user.role === 'internee' && user.teamLeadId) {
+      const message = `A new internee, ${user.firstName} ${user.lastName}, has been assigned to your team.`;
+      await createNotification(user.id, user.teamLeadId, message, t);
+    }
+
+    // Commit transaction before email sending
+    await t.commit();
+
     // Prepare user data
     const userData = {
       id: user.id,
@@ -110,10 +129,10 @@ const register = async (req, res) => {
     // Generate token
     const token = generateToken(user.id);
 
-    // Prepare email message
+    // Email sending (AFTER transaction)
+    let emailSent = true;
     const message = `Your login credentials are:\nEmail: ${email}\nPassword: ${password}\n\nPlease log in and change your password as soon as possible.`;
 
-    // Send email (await here so failure can rollback)
     try {
       await sendEmail({
         email: user.email,
@@ -122,24 +141,17 @@ const register = async (req, res) => {
       });
     } catch (emailError) {
       console.error("Email sending failed:", emailError);
-      await t.rollback(); // rollback user creation
-      return res.status(500).json({
-        success: false,
-        message: 'User registration failed because email could not be sent',
-        error: emailError.message
-      });
+      emailSent = false; // don’t rollback, just mark email as failed
     }
 
-    // Commit transaction after successful email
-    await t.commit();
-
-    // Send success response
+    // Send success response regardless of email result
     res.status(201).json({
       success: true,
-      message: 'User registered successfully',
+      message: emailSent ? 'User registered successfully' : 'User registered successfully but email could not be sent',
       data: {
         user: userData,
-        token
+        token,
+        emailSent
       }
     });
 
@@ -292,6 +304,9 @@ const updateProfile = async (req, res) => {
       }
       if (req.files.idCardBackPic) {
         updateData.idCardBackPic = `/uploads/documents/${req.files.idCardBackPic[0].filename}`;
+      }
+      if (req.files.coverPhoto) {
+        updateData.coverPhoto = `/uploads/profiles/${req.files.coverPhoto[0].filename}`;
       }
     }
 

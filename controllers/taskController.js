@@ -1,5 +1,7 @@
-const { Task, User } = require('../models');
+
+const { Task, User, sequelize } = require('../models');
 const { Op } = require('sequelize');
+const { createNotification, createBulkNotifications } = require('../services/notificationService');
 
 // Get tasks assigned to the currently logged-in user
 const getMyTasks = async (req, res) => {
@@ -53,9 +55,11 @@ const getMyTasks = async (req, res) => {
 };
 
 const createTask = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
     const { title, description, assigneeId, dueDate, priority } = req.body;
     const assignerId = req.user.id;
+
     const task = await Task.create({
       title,
       description,
@@ -64,9 +68,29 @@ const createTask = async (req, res) => {
       dueDate,
       priority: priority || 'medium',
       status: 'assigned',
-    });
+    }, { transaction: t });
+
+    const assignee = await User.findByPk(assigneeId);
+    const messageForAssignee = `You have been assigned a new task: "${title}".`;
+    await createNotification(assignerId, assigneeId, messageForAssignee, `task/${task.id}`, t);
+
+    const admins = await User.findAll({ where: { role: 'admin' }, attributes: ['id'] });
+    const adminIds = admins.map(admin => admin.id).filter(id => id !== assignerId && id !== assigneeId);
+
+    if (admins.length > 0) {
+        const messageForAdmins = `A new task "${title}" has been created and assigned to ${assignee.firstName} ${assignee.lastName}.`;
+        await createBulkNotifications(assignerId, adminIds, messageForAdmins, `task/${task.id}`, t);
+    }
+
+    if (assignee.teamLeadId && assignee.teamLeadId !== assignerId) {
+        const messageForTeamLead = `A new task "${title}" has been assigned to your team member, ${assignee.firstName} ${assignee.lastName}.`;
+        await createNotification(assignerId, assignee.teamLeadId, messageForTeamLead, `task/${task.id}`, t);
+    }
+
+    await t.commit();
     res.status(201).json({ success: true, message: 'Task created successfully', data: task });
   } catch (error) {
+    await t.rollback();
     res.status(500).json({ success: false, message: 'Failed to create task', error: error.message });
   }
 };
@@ -186,90 +210,192 @@ const getTaskById = async (req, res) => {
 };
 
 const updateTaskStatus = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-    const task = await Task.findByPk(id);
-    if (!task) {
-      return res.status(404).json({ success: false, message: 'Task not found' });
+    const t = await sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        const task = await Task.findByPk(id, { transaction: t });
+        if (!task) {
+            await t.rollback();
+            return res.status(404).json({ success: false, message: 'Task not found' });
+        }
+
+        task.status = status;
+        await task.save({ transaction: t });
+
+        const { id: senderId, firstName, lastName } = req.user;
+
+        // Notify assignee
+        if (task.assigneeId !== senderId) {
+            const messageForAssignee = `The status of your task "${task.title}" has been updated to ${status}.`;
+            await createNotification(senderId, task.assigneeId, messageForAssignee, `task/${task.id}`, t);
+        }
+
+        // Notify assigner
+        if (task.assignerId !== senderId && task.assignerId !== task.assigneeId) {
+            const messageForAssigner = `The status of the task "${task.title}" assigned to ${firstName} ${lastName} has been updated to ${status}.`;
+            await createNotification(senderId, task.assignerId, messageForAssigner, `task/${task.id}`, t);
+        }
+        
+        await t.commit();
+        res.json({ success: true, message: 'Task status updated successfully', data: task });
+    } catch (error) {
+        await t.rollback();
+        res.status(500).json({ success: false, message: 'Failed to update task status', error: error.message });
     }
-    task.status = status;
-    await task.save();
-    res.json({ success: true, message: 'Task status updated successfully', data: task });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to update task status', error: error.message });
-  }
 };
 
 const submitTask = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { submissionNotes } = req.body;
-    const submissionFile = req.file ? req.file.filename : null;
-    const task = await Task.findByPk(id);
+    const t = await sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const { submissionNotes } = req.body;
+        const submissionFile = req.file ? req.file.filename : null;
+        const task = await Task.findByPk(id, {
+            include: [{ model: User, as: 'assignee' }],
+            transaction: t
+        });
 
-    if (!task) {
-      return res.status(404).json({ success: false, message: 'Task not found' });
-    }
-    if (String(task.assigneeId) !== String(req.user.id)) {
-      return res.status(403).json({ success: false, message: 'You can only submit your own tasks' });
-    }
+        if (!task) {
+            await t.rollback();
+            return res.status(404).json({ success: false, message: 'Task not found' });
+        }
+        if (String(task.assigneeId) !== String(req.user.id)) {
+            await t.rollback();
+            return res.status(403).json({ success: false, message: 'You can only submit your own tasks' });
+        }
 
-    task.status = 'submitted';
-    task.submissionNotes = submissionNotes;
-    task.submissionFile = submissionFile;
-    task.submittedAt = new Date();
-    await task.save();
-    res.json({ success: true, message: 'Task submitted successfully', data: task });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to submit task', error: error.message });
-  }
+        task.status = 'submitted';
+        task.submissionNotes = submissionNotes;
+        task.submissionFile = submissionFile;
+        task.submittedAt = new Date();
+        await task.save({ transaction: t });
+
+        const { id: senderId, firstName, lastName } = req.user;
+
+        // Notify assigner
+        const messageForAssigner = `Task "${task.title}" has been submitted by ${firstName} ${lastName}.`;
+        await createNotification(senderId, task.assignerId, messageForAssigner, `task/${task.id}`, t);
+
+        // Notify all admins
+        const admins = await User.findAll({ where: { role: 'admin' }, attributes: ['id'] });
+        const adminIds = admins.map(admin => admin.id).filter(id => id !== senderId && id !== task.assignerId);
+        if (adminIds.length > 0) {
+            const messageForAdmins = `Task "${task.title}" submitted by ${firstName} ${lastName} is pending review.`;
+            await createBulkNotifications(senderId, adminIds, messageForAdmins, `task/${task.id}`, t);
+        }
+
+        // Notify team lead if applicable
+        if (task.assignee.teamLeadId && task.assignee.teamLeadId !== task.assignerId) {
+            const messageForTeamLead = `Your team member, ${firstName} ${lastName}, has submitted the task "${task.title}".`;
+            await createNotification(senderId, task.assignee.teamLeadId, messageForTeamLead, `task/${task.id}`, t);
+        }
+
+        await t.commit();
+        res.json({ success: true, message: 'Task submitted successfully', data: task });
+    } catch (error) {
+        await t.rollback();
+        res.status(500).json({ success: false, message: 'Failed to submit task', error: error.message });
+    }
 };
 
+
 const acceptTask = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { feedback } = req.body;
-    const task = await Task.findByPk(id);
+    const t = await sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const { feedback } = req.body;
+        const task = await Task.findByPk(id, { include: [{ model: User, as: 'assignee' }], transaction: t });
 
-    if (!task) {
-      return res.status(404).json({ success: false, message: 'Task not found' });
-    }
-    if (task.status !== 'submitted') {
-      return res.status(400).json({ success: false, message: 'Task must be in a submitted state to be accepted' });
-    }
+        if (!task) {
+            await t.rollback();
+            return res.status(404).json({ success: false, message: 'Task not found' });
+        }
+        if (task.status !== 'submitted') {
+            await t.rollback();
+            return res.status(400).json({ success: false, message: 'Task must be in a submitted state to be accepted' });
+        }
 
-    task.status = 'accepted';
-    task.feedback = feedback || null;
-    await task.save();
-    res.json({ success: true, message: 'Task accepted successfully', data: task });
-  } catch (error) {
-    console.error('Error accepting task:', error);
-    res.status(500).json({ success: false, message: 'Failed to reject task', error: error.message });
-  }
+        task.status = 'accepted';
+        task.feedback = feedback || null;
+        await task.save({ transaction: t });
+
+        const senderId = req.user.id;
+
+        // Notify assignee
+        const messageForAssignee = `Your submission for the task "${task.title}" has been accepted.`;
+        await createNotification(senderId, task.assigneeId, messageForAssignee, `task/${task.id}`, t);
+
+        // Notify admins
+        const admins = await User.findAll({ where: { role: 'admin' }, attributes: ['id'] });
+        const adminIds = admins.map(admin => admin.id).filter(id => id !== senderId && id !== task.assigneeId);
+        if (adminIds.length > 0) {
+            const messageForAdmins = `The task "${task.title}" has been accepted.`;
+            await createBulkNotifications(senderId, adminIds, messageForAdmins, `task/${task.id}`, t);
+        }
+
+        // Notify team lead if applicable
+        if (task.assignee.teamLeadId && task.assignee.teamLeadId !== senderId) {
+            const messageForTeamLead = `The task "${task.title}" assigned to ${task.assignee.firstName} ${task.assignee.lastName} has been accepted.`;
+            await createNotification(senderId, task.assignee.teamLeadId, messageForTeamLead, `task/${task.id}`, t);
+        }
+
+        await t.commit();
+        res.json({ success: true, message: 'Task accepted successfully', data: task });
+    } catch (error) {
+        await t.rollback();
+        console.error('Error accepting task:', error);
+        res.status(500).json({ success: false, message: 'Failed to accept task', error: error.message });
+    }
 };
 
 const rejectTask = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { feedback } = req.body;
-    const task = await Task.findByPk(id);
+    const t = await sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const { feedback } = req.body;
+        const task = await Task.findByPk(id, { include: [{ model: User, as: 'assignee' }], transaction: t });
 
-    if (!task) {
-      return res.status(404).json({ success: false, message: 'Task not found' });
-    }
-    if (task.status !== 'submitted') {
-      return res.status(400).json({ success: false, message: 'Task must be in a submitted state to be rejected' });
-    }
+        if (!task) {
+            await t.rollback();
+            return res.status(404).json({ success: false, message: 'Task not found' });
+        }
+        if (task.status !== 'submitted') {
+            await t.rollback();
+            return res.status(400).json({ success: false, message: 'Task must be in a submitted state to be rejected' });
+        }
 
-    task.status = 'rejected';
-    task.feedback = feedback || null;
-    await task.save();
-    res.json({ success: true, message: 'Task rejected successfully', data: task });
-  } catch (error) {
-    console.error('Error rejecting task:', error);
-    res.status(500).json({ success: false, message: 'Failed to reject task', error: error.message });
-  }
+        task.status = 'rejected';
+        task.feedback = feedback || null;
+        await task.save({ transaction: t });
+
+        const senderId = req.user.id;
+
+        // Notify assignee
+        const messageForAssignee = `Your submission for the task "${task.title}" has been rejected.`;
+        await createNotification(senderId, task.assigneeId, messageForAssignee, `task/${task.id}`, t);
+
+        // Notify admins
+        const admins = await User.findAll({ where: { role: 'admin' }, attributes: ['id'] });
+        const adminIds = admins.map(admin => admin.id).filter(id => id !== senderId && id !== task.assigneeId);
+        if (adminIds.length > 0) {
+            const messageForAdmins = `The task "${task.title}" has been rejected.`;
+            await createBulkNotifications(senderId, adminIds, messageForAdmins, `task/${task.id}`, t);
+        }
+
+        // Notify team lead if applicable
+        if (task.assignee.teamLeadId && task.assignee.teamLeadId !== senderId) {
+            const messageForTeamLead = `The task "${task.title}" assigned to ${task.assignee.firstName} ${task.assignee.lastName} has been rejected.`;
+            await createNotification(senderId, task.assignee.teamLeadId, messageForTeamLead, `task/${task.id}`, t);
+        }
+
+        await t.commit();
+        res.json({ success: true, message: 'Task rejected successfully', data: task });
+    } catch (error) {
+        await t.rollback();
+        console.error('Error rejecting task:', error);
+        res.status(500).json({ success: false, message: 'Failed to reject task', error: error.message });
+    }
 };
 
 const deleteTask = async (req, res) => {
@@ -282,7 +408,7 @@ const deleteTask = async (req, res) => {
     await task.destroy();
     res.json({ success: true, message: 'Task deleted successfully' });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to delete task', error: a.message });
+    res.status(500).json({ success: false, message: 'Failed to delete task', error: error.message });
   }
 };
 

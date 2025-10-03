@@ -20,7 +20,8 @@ router.get('/profile', authenticateToken, getProfile);
 router.put('/profile', authenticateToken, uploadUserFiles.fields([
   { name: 'profilePicture', maxCount: 1 },
   { name: 'idCardFrontPic', maxCount: 1 },
-  { name: 'idCardBackPic', maxCount: 1 }
+  { name: 'idCardBackPic', maxCount: 1 },
+  { name: "coverPhoto", maxCount: 1 }
 ]), updateProfile);
 router.put('/change-password', authenticateToken, changePassword);
 router.put('/admin/change-password', authenticateToken, requireTeamLead, adminChangePassword);
