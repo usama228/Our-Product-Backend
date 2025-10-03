@@ -1,16 +1,19 @@
+
 const sequelize = require('../config/db');
 const User = require('./userModel');
 const Task = require('./taskModel');
+const Notification = require('./NotificationModel')(sequelize, require('sequelize').DataTypes);
 
 // Initialize associations
 const models = {
   User,
-  Task
+  Task,
+  Notification
 };
 
 // Set up associations
 Object.keys(models).forEach(modelName => {
-  if (models[modelName].associate) {
+  if (models[modelName] && models[modelName].associate) {
     models[modelName].associate(models);
   }
 });
@@ -18,5 +21,6 @@ Object.keys(models).forEach(modelName => {
 module.exports = {
   sequelize,
   User,
-  Task
+  Task,
+  Notification
 };

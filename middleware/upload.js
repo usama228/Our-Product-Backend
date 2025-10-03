@@ -17,7 +17,7 @@ fs.mkdirSync(taskDir, { recursive: true });
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     // Route files to the correct directory based on the form field name
-    if (file.fieldname === 'profilePicture') {
+    if (file.fieldname === 'profilePicture' || file.fieldname === 'coverPhoto') {
       cb(null, profileDir);
     } else if (file.fieldname === 'idCardFrontPic' || file.fieldname === 'idCardBackPic') {
       cb(null, documentDir);

@@ -52,7 +52,8 @@ router.put(
     uploadUserFiles.fields([
         { name: 'profilePicture', maxCount: 1 },
         { name: 'idCardFrontPic', maxCount: 1 },
-        { name: 'idCardBackPic', maxCount: 1 }
+        { name: 'idCardBackPic', maxCount: 1 },
+        { name: "coverPhoto", maxCount: 1 }
     ]),
     updateUser
 );

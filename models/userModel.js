@@ -73,6 +73,10 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     allowNull: true
   },
+  coverPhoto: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   teamLeadId: {
     type: DataTypes.INTEGER,
     allowNull: true,
