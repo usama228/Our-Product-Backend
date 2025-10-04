@@ -1,5 +1,4 @@
-
-const { User, Task } = require("../models");
+const { User, Task, Notification } = require("../models");
 const { createNotification } = require('../services/notificationService');
 const { Op } = require("sequelize");
 
@@ -417,6 +416,20 @@ const deleteUser = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
+    // Clean up related notifications first
+    await Notification.destroy({
+      where: {
+        [Op.or]: [
+          { recipient: userId },
+          { sender: userId } 
+        ]
+      }
+    });
+
+    // clean up tasks assigned to the user
+    await Task.destroy({ where: { assigneeId: userId } });
+
+    // Finally delete the user
     await user.destroy();
 
     res.json({ success: true, message: "User deleted successfully" });
