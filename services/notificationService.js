@@ -8,14 +8,14 @@ const { Notification } = require('../models');
  * @param {string} message - The notification message.
  * @param {object} transaction - The Sequelize transaction object.
  */
-const createNotification = async (senderId, recipientId, message, link = null, transaction = null) => {
+const createNotification = async (senderId, recipientId, message, link = null, options = {}) => {
   try {
     await Notification.create({
       sender: senderId,
       recipient: recipientId,
       message,
       link,
-    }, { transaction });
+    }, options);  // <-- directly pass options
   } catch (error) {
     console.error(`Error creating notification for recipient ${recipientId}:`, error);
     throw error;
@@ -29,7 +29,8 @@ const createNotification = async (senderId, recipientId, message, link = null, t
  * @param {string} message - The notification message.
  * @param {object} transaction - The Sequelize transaction object.
  */
-const createBulkNotifications = async (senderId, recipientIds, message, link = null, transaction = null) => {
+
+const createBulkNotifications = async (senderId, recipientIds, message, link = null, options = {}) => {
   try {
     const notifications = recipientIds.map(recipientId => ({
       sender: senderId,
@@ -37,7 +38,7 @@ const createBulkNotifications = async (senderId, recipientIds, message, link = n
       message,
       link,
     }));
-    await Notification.bulkCreate(notifications, { transaction });
+    await Notification.bulkCreate(notifications, options); // <-- directly pass options
   } catch (error) {
     console.error('Error creating bulk notifications:', error);
     throw error;

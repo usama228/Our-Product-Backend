@@ -103,12 +103,12 @@ const register = async (req, res) => {
 
     if (adminIds.length > 0) {
       const message = `New user created: ${user.firstName} ${user.lastName} (${user.email}).`;
-      await createBulkNotifications(user.id, adminIds, message, t);
+      await createBulkNotifications(user.id, adminIds, message, `user-profile/${user.id}`, { transaction: t });
     }
 
     if (user.role === 'internee' && user.teamLeadId) {
       const message = `A new internee, ${user.firstName} ${user.lastName}, has been assigned to your team.`;
-      await createNotification(user.id, user.teamLeadId, message, t);
+      await createNotification(user.id, user.teamLeadId, message, `user-profile/${user.id}`, { transaction: t });
     }
 
     // Commit transaction before email sending
