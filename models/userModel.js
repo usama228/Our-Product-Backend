@@ -128,6 +128,24 @@ User.associate = (models) => {
     as: 'createdTasks',
     foreignKey: 'assignerId'
   });
+  
+  // User has many attendance records
+  User.hasMany(models.Attendance, {
+    as: 'attendanceRecords',
+    foreignKey: 'userId'
+  });
+  
+  // User has many leave requests
+  User.hasMany(models.Leave, {
+    as: 'leaveRequests',
+    foreignKey: 'userId'
+  });
+  
+  // User has many approved leaves (as approver)
+  User.hasMany(models.Leave, {
+    as: 'approvedLeaves',
+    foreignKey: 'approvedBy'
+  });
 };
 
 module.exports = User;
